@@ -4,7 +4,7 @@ import { WorldView, reachable, pathTo } from './render/world.js';
 import { BattleView } from './render/battle.js';
 import { showD20 } from './render/dice.js';
 import { Net } from './net.js';
-import { SKILLS } from '/shared/data/classes.js';
+import { SKILLS, weaponSkill } from '/shared/data/classes.js';
 import { ITEMS } from '/shared/data/items.js';
 import { BIOMES } from '/shared/data/mythic.js';
 import { hkey } from '/shared/rules.js';
@@ -17,6 +17,7 @@ import { renderSheet } from './ui/sheet.js';
 import { renderCombat, validTargets } from './ui/combatui.js';
 import { esc, toast } from './ui/util.js';
 import { renderTitle } from './ui/menu.js';
+import { loadSpriteOverrides } from './render/rig.js';
 import { renderCoach } from './ui/coach.js';
 
 const $ = (id) => document.getElementById(id);
@@ -133,6 +134,7 @@ function render() {
   if (!s || !app.me) return;
   document.body.dataset.phase = s.phase;
   if (app.ui.screen === 'menu' && app.me.isHost) {
+    tooltip.style.display = 'none';
     document.body.dataset.phase = 'lobby';
     useView(world);
     world.sync(demoState([]), new Set());
@@ -142,6 +144,7 @@ function render() {
     keepFocus(() => { $('center').innerHTML = renderTitle(app); });
     return;
   }
+  if (s.phase !== 'map') tooltip.style.display = 'none';
   if (s.phase === 'lobby') {
     useView(world);
     const demo = demoState(s.heroes);
@@ -229,11 +232,15 @@ function updateLog() {
 world.onTileClick = (t) => {
   const s = app.state;
   if (!s || s.phase !== 'map' || app.ui.modal) return;
-  if (s.travel.stage !== 'move') { if (s.travel.stage === 'roll') toast('Prima tirate la Riserva del Cammino', 'info'); return; }
+  const act = s.heroes.find((h) => h.id === s.travel.order?.[s.travel.cur]);
+  if (act && !app.canControl(act)) { toast(`È il turno di ${act.name}`, 'info'); return; }
+  if (s.travel.stage !== 'move') { if (s.travel.stage === 'roll') toast(`Prima tira il dado di ${act?.name || 'questo eroe'}`, 'info'); return; }
   if (!world.reach.has(hkey(t.q, t.r))) return;
   world.setPath(null);
   app.send({ type: 'move', q: t.q, r: t.r });
 };
+// a fine rotazione si aggiornano le frecce delle missioni (dipendono dall'angolo della visuale)
+world.onRotate = () => render();
 world.onHover = (t, x, y) => {
   const s = app.state;
   if (!s || s.phase === 'lobby' || !t) { tooltip.style.display = 'none'; world.setPath(null); return; }
@@ -330,8 +337,9 @@ const A = {
   choose_job: (d) => app.send({ type: 'choose_job', heroId: d.hero, job: d.job }),
   set_row: (d) => app.send({ type: 'set_row', heroId: d.hero, row: Number(d.row) }),
   travel_roll: () => app.send({ type: 'travel_roll' }),
-  travel_assign: (d) => app.send({ type: 'travel_assign', heroId: d.hero, face: d.face }),
-  travel_unassign: (d) => app.send({ type: 'travel_unassign', heroId: d.hero }),
+  end_turn: () => app.send({ type: 'end_turn' }),
+  travel_assign: (d) => app.send({ type: 'travel_assign', face: d.face }),
+  travel_unassign: () => app.send({ type: 'travel_unassign' }),
   travel_confirm: () => app.send({ type: 'travel_confirm' }),
   end_day: () => app.send({ type: 'end_day' }),
   vote: (d) => app.send({ type: 'vote', idx: Number(d.idx) }),
@@ -354,6 +362,11 @@ const A = {
   qfocus: (d) => { if (app.state.phase !== 'map') return; world.focusTile(+d.q, +d.r); },
   // battaglia
   cattack: () => { app.ui.pending = { sk: { ...SKILLS.attacco, id: 'attacco' }, action: { kind: 'attack' } }; autoTarget(); },
+  cweapon: (d) => {
+    const c = app.state.combat, actor = c.units.find((u) => u.id === c.active);
+    app.ui.pending = { sk: weaponSkill(actor.wtype, d.move, actor.element), action: { kind: 'attack', move: d.move } };
+    autoTarget();
+  },
   cmenu: (d) => { app.ui.cmenu = d.m; render(); },
   cback: () => { app.ui.pending = null; app.ui.cmenu = 'main'; render(); },
   cskill: (d) => {
@@ -380,6 +393,10 @@ function autoTarget() {
   render();
 }
 
+// il tooltip della mappa vive solo sopra il canvas: se il puntatore passa su un pannello (lobby, menu, finestre) si nasconde
+document.addEventListener('pointermove', (e) => {
+  if (e.target !== engine.renderer.domElement && tooltip.style.display !== 'none') { tooltip.style.display = 'none'; world.setPath(null); }
+});
 document.addEventListener('click', (e) => {
   const el = e.target.closest('[data-act]');
   if (!el || el.disabled) return;
@@ -401,6 +418,8 @@ document.addEventListener('keydown', (e) => {
 });
 
 // avvio
+// sprite PNG opzionali (client/assets/sprites/manifest.json): se presenti sostituiscono i pezzi generati
+loadSpriteOverrides().then((n) => { if (n) render(); });
 useView(world);
 if (sessionStorage.getItem('vael_token') && sessionStorage.getItem('vael_name')) {
   // riconnessione automatica

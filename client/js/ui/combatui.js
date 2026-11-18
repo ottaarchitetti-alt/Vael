@@ -1,9 +1,9 @@
 // Interfaccia di battaglia: ordine dei turni, menu comandi stile JRPG, bersagli, ricompense
-import { SKILLS, CLASSES } from '/shared/data/classes.js';
+import { SKILLS, CLASSES, WEAPON_MOVES } from '/shared/data/classes.js';
 import { ITEMS } from '/shared/data/items.js';
 import { MYTHIC } from '/shared/data/mythic.js';
 import { ELEMENTS } from '/shared/rules.js';
-import { heroPortrait, enemyPortrait } from '../render/pixel.js';
+import { heroPortrait, enemyPortrait } from '../render/rig.js';
 import { esc } from './util.js';
 
 export function validTargets(c, actor, sk) {
@@ -75,7 +75,7 @@ export function renderCombat(app) {
     const partner = av.concert && unit(av.concert.partner);
     inner = `<div class="cmd-title"><img src="${heroPortrait(hero, 1)}" alt=""> ${esc(hero.name)} <small>${CLASSES[hero.cls].name}</small>${actor.charge ? ` <span class="chg">Slancio ${'◆'.repeat(actor.charge)}</span>` : ''}</div>
       <div class="cmd-grid">
-        <button data-act="cattack">⚔ Attacca<small>${ELEMENTS[actor.element]?.icon || ''} ${actor.ranged ? 'distanza' : 'mischia'}</small></button>
+        ${(WEAPON_MOVES[actor.wtype] || WEAPON_MOVES.spada).map((m) => `<button class="wmove" data-act="cweapon" data-move="${m.id}" title="${esc(m.desc)}">${m.icon} ${esc(m.name)}<small>${m.ranged ? '🏹 distanza' : '⚔ mischia'}${m.aoe === 'sweep' ? ' · ad arco' : m.aoe === 'row' ? ' · tutta la fila' : m.aoe === 'volley' ? ' · a raffica' : m.target === 'enemies' ? ' · tutti' : ''}</small></button>`).join('')}
         <button data-act="cmenu" data-m="skills">✦ Abilità<small>${actor.mp} PM</small></button>
         <button data-act="cdo" data-kind="charge" ${actor.charge >= 3 ? 'disabled' : ''}>◆ Slancio<small>${actor.charge}/3 · prossimo colpo ×${[1, 1.5, 2, 2.5][Math.min(3, actor.charge + 1)]}</small></button>
         <button data-act="cdo" data-kind="defend">🛡 Difendi<small>−50% danni, +PM</small></button>

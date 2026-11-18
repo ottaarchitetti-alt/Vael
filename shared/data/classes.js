@@ -173,3 +173,43 @@ export const SKILLS = {
   freccia_nemica: { name: 'Dardo', mp: 0, kind: 'phys', target: 'enemy', power: 1.1, el: 'punta', reach: true },
   evoca: { name: 'Evoca Servitori', mp: 0, kind: 'special', target: 'self', special: 'summon_minions' },
 };
+
+// Mosse base di ogni arma (0 PM): sostituiscono l'attacco generico.
+// ranged = colpisce a distanza (qualsiasi fila, nessun assalto corpo a corpo); aoe: 'sweep' = bersaglio + vicini
+// nella stessa fila (60%), 'row' = tutta la fila del bersaglio, 'volley' = colpi su nemici casuali.
+export const WEAPON_MOVES = {
+  spada: [
+    { id: 'w_fendente', name: 'Fendente', icon: '⚔', kind: 'phys', power: 0.9, aoe: 'sweep', desc: 'Colpo ad arco: ferisce anche i nemici accanto (60%).' },
+    { id: 'w_affondo', name: 'Affondo', icon: '🗡', kind: 'phys', power: 1.2, el: 'punta', crit: 10, desc: 'Stoccata precisa: +10% critico.' },
+  ],
+  pugnale: [
+    { id: 'w_rapidi', name: 'Colpi rapidi', icon: '🔪', kind: 'phys', power: 0.6, hits: 2, desc: 'Due fendenti veloci.' },
+    { id: 'w_tendini', name: 'Taglio ai tendini', icon: '🩸', kind: 'phys', power: 0.85, st: [['slow', 0.5, 2]], desc: 'Può rallentare il bersaglio.' },
+  ],
+  mazza: [
+    { id: 'w_diretto', name: 'Colpo diretto', icon: '🔨', kind: 'phys', power: 1.15, guard: 1, desc: 'Pesante: −1 Guardia in più.' },
+    { id: 'w_schianto', name: 'Schianto', icon: '💥', kind: 'phys', power: 0.65, aoe: 'row', desc: 'Colpisce il terreno: tutta la fila del bersaglio.' },
+  ],
+  arco: [
+    { id: 'w_tiro', name: 'Tiro', icon: '🏹', kind: 'phys', power: 1.0, ranged: true, desc: 'Freccia a distanza su qualsiasi fila.' },
+    { id: 'w_raffica', name: 'Raffica', icon: '🎯', kind: 'phys', power: 0.45, hits: 3, ranged: true, aoe: 'volley', desc: 'Tre frecce su nemici a caso.' },
+  ],
+  bastone: [
+    { id: 'w_dardo', name: 'Dardo arcano', icon: '✨', kind: 'mag', power: 0.85, el: 'luce', ranged: true, desc: 'Raggio di luce a distanza (usa la Magia).' },
+    { id: 'w_bastonata', name: 'Bastonata', icon: '🪄', kind: 'phys', power: 0.9, el: 'botta', guard: 1, desc: 'Colpo di bastone: −1 Guardia in più.' },
+  ],
+  liuto: [
+    { id: 'w_nota', name: 'Nota tagliente', icon: '🎵', kind: 'mag', power: 0.85, el: 'ombra', ranged: true, desc: 'Un suono che ferisce a distanza.' },
+    { id: 'w_accordo', name: 'Accordo dissonante', icon: '🎶', kind: 'mag', power: 0.4, ranged: true, target: 'enemies', desc: 'Colpisce tutti i nemici.' },
+  ],
+  lanterna: [
+    { id: 'w_lampo', name: 'Lampo', icon: '🏮', kind: 'mag', power: 0.85, el: 'luce', ranged: true, desc: 'Bagliore accecante a distanza.' },
+    { id: 'w_fiammata', name: 'Fiammata', icon: '🔥', kind: 'mag', power: 0.6, el: 'fuoco', ranged: true, aoe: 'sweep', st: [['burn', 0.3, 3]], desc: 'Fuoco sul bersaglio e accanto, può bruciare.' },
+  ],
+};
+// Converte una mossa d'arma in un'abilità utilizzabile dal motore di combattimento
+export function weaponSkill(wtype, moveId, element) {
+  const list = WEAPON_MOVES[wtype] || WEAPON_MOVES.spada;
+  const m = list.find((x) => x.id === moveId) || list[0];
+  return { ...m, mp: 0, target: m.target || (m.aoe === 'volley' ? 'randomEnemies' : 'enemy'), reach: !!m.ranged, el: m.el || element, weapon: true };
+}

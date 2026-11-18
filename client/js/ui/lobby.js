@@ -3,7 +3,7 @@ import { CLASSES, SKILLS } from '/shared/data/classes.js';
 import { TRAITS, LOOK, HERO_NAMES, HAIR_STYLES, BEARDS, ACCESSORIES, DEFAULT_LOOK } from '/shared/data/heroes.js';
 import { LORE } from '/shared/data/mythic.js';
 import { heroDerived, STAT_ABBR, STATS, MAX_HEROES } from '/shared/rules.js';
-import { heroPortrait, heroStrip, HERO_ANIM, HERO_W, HERO_H } from '../render/pixel.js';
+import { heroPortrait, heroStrip } from '../render/rig.js';
 import { esc, nl2p } from './util.js';
 
 export function renderLobby(app) {
@@ -45,10 +45,8 @@ export function renderLobby(app) {
   const chips = (k, obj) => Object.entries(obj).map(([id, label]) => `<button class="chip ${d.look[k] === id ? 'sel' : ''}" data-act="look" data-k="${k}" data-v="${id}">${esc(label)}</button>`).join('');
   const anims = [['idle', 'Riposo'], ['walk', 'Cammino'], ['attack', 'Attacco'], ['cast', 'Magia'], ['guard', 'Guardia'], ['hurt', 'Colpito']];
   const an = ui.previewAnim || 'idle';
-  const seq = an === 'attack' ? [8, 8, 9, 10, 10, 0, 0] : an === 'cast' ? [0, 11, 11, 11, 0] : an === 'hurt' ? [12, 12, 0, 0] : an === 'guard' ? [14] : HERO_ANIM[an];
-  const SC = 5;
-  const strip = heroStrip(preview, seq, SC);
-  const dur = { idle: 0.9, walk: 0.5, attack: 0.8, cast: 1.1, guard: 1, hurt: 0.7 }[an];
+  const SC = 4;
+  const st = heroStrip(preview, an, an === 'guard' ? 1 : 12, SC); // fotogrammi presi dalla marionetta animata
 
   const creator = `
     <div class="panel creator">
@@ -56,7 +54,7 @@ export function renderLobby(app) {
       <div class="cls-grid">${classCards}</div>
       <div class="creator-body">
         <div class="preview">
-          <div class="anim-preview" style="--w:${HERO_W * SC}px;--h:${HERO_H * SC}px;--n:${seq.length};--sw:${HERO_W * SC * seq.length}px;--dur:${dur}s;background-image:url(${strip})"></div>
+          <div class="anim-preview" style="--w:${st.w}px;--h:${st.h}px;--n:${st.n};--sw:${st.w * st.n}px;--dur:${st.dur}s;background-image:url(${st.url})"></div>
           <div class="anim-btns">${anims.map(([k, n]) => `<button class="chip ${an === k ? 'sel' : ''}" data-act="preview_anim" data-a="${k}">${n}</button>`).join('')}</div>
           <button class="ghost" data-act="look_random" title="Aspetto casuale">🎲 Aspetto casuale</button>
         </div>

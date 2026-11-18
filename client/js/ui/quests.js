@@ -3,6 +3,7 @@ import { STORY, STORY_EVENTS } from '/shared/data/story.js';
 import { TUTORIAL_STORY, TUTORIAL_GOALS } from '/shared/data/tutorial.js';
 import { hexDist, hkey } from '/shared/rules.js';
 import { esc } from './util.js';
+import { mapYaw } from '../render/world.js';
 
 // testo dell'obiettivo per ogni tappa della storia
 const GOALS = {
@@ -18,11 +19,14 @@ const GOALS = {
 };
 const ACT_QUEST = { 1: 'Le Lanterne Morenti', 2: 'La Palude delle Falene', 3: 'La Cattedrale dell\'Eclisse' };
 
-// direzione sullo schermo (la camera guarda verso nord = r decrescente)
+// direzione sullo schermo della meta rispetto al gruppo
 function arrow(from, to) {
   const x = Math.sqrt(3) * (to.q - from.q + (to.r - from.r) / 2), z = 1.5 * (to.r - from.r);
   if (Math.abs(x) < 0.01 && Math.abs(z) < 0.01) return '●';
-  const a = Math.atan2(-z, x); // 0 = est, π/2 = nord
+  // la mappa è vista in isometria e si può ruotare: si converte la direzione in quella sullo schermo
+  const yaw = mapYaw();
+  const sx = x * Math.cos(yaw) - z * Math.sin(yaw), sy = -x * Math.sin(yaw) - z * Math.cos(yaw);
+  const a = Math.atan2(sy, sx); // 0 = destra, π/2 = alto
   return ['→', '↗', '↑', '↖', '←', '↙', '↓', '↘'][Math.round(a / (Math.PI / 4) + 8) % 8];
 }
 

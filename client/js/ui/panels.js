@@ -4,7 +4,8 @@ import { ITEMS } from '/shared/data/items.js';
 import { MYTHIC } from '/shared/data/mythic.js';
 import { TOWN_SERVICES } from '/shared/data/story.js';
 import { checkBonus, successChance, STAT_NAMES, heroDerived, itemPrice, SLOTS, SLOT_NAMES } from '/shared/rules.js';
-import { eventArt, heroPortrait } from '../render/pixel.js';
+import { eventArt } from '../render/pixel.js';
+import { heroPortrait } from '../render/rig.js';
 import { esc, nl2p, itemHtml } from './util.js';
 
 function voteBar(app, idx) {

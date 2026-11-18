@@ -22,7 +22,7 @@ export function mix(a, b, t) {
   const A = hexToRgb(a), B = hexToRgb(b);
   return '#' + A.map((v, i) => Math.round(v + (B[i] - v) * t).toString(16).padStart(2, '0')).join('');
 }
-class P {
+export class P {
   constructor(x, ox = 0, oy = 0) { this.x = x; this.ox = ox; this.oy = oy; }
   r(c, X, Y, w = 1, h = 1) { if (!c) return; this.x.fillStyle = c; this.x.fillRect(X + this.ox, Y + this.oy, w, h); }
   e(c, cx, cy, rx, ry) { // ellisse piena
@@ -63,7 +63,7 @@ class P {
 }
 
 // contorno scuro + luce di contorno (look "HD-2D")
-function finish(x, w, h, { outline = '#140c18', rim = true } = {}) {
+export function finish(x, w, h, { outline = '#140c18', rim = true } = {}) {
   const img = x.getImageData(0, 0, w, h), d = img.data;
   const A = (X, Y) => (X < 0 || Y < 0 || X >= w || Y >= h ? 0 : d[(Y * w + X) * 4 + 3]);
   const out = new Uint8ClampedArray(d);
@@ -87,7 +87,7 @@ function mirror(c) {
   mx.translate(c.width, 0); mx.scale(-1, 1); mx.drawImage(c, 0, 0);
   return m;
 }
-function tint(c, color, alpha) {
+export function tint(c, color, alpha) {
   const [m, mx] = canvas(c.width, c.height);
   mx.drawImage(c, 0, 0);
   mx.globalCompositeOperation = 'source-atop';

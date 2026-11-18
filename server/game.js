@@ -13,7 +13,6 @@ import { TUTORIAL_STORY, TUTORIAL_EVENTS, TUTORIAL_HEROES, TUTORIAL_ENDING } fro
 import { MYTHIC, BIOMES, ACTS, FACTIONS } from '../shared/data/mythic.js';
 import { heroDerived, checkBonus, xpToNext, MAX_LEVEL, MAX_HEROES, SLOTS, hkey, STAT_NAMES, itemPrice, JOURNEY, hexDist } from '../shared/rules.js';
 
-const STEP_TABLE = [0, 1, 1, 1, 2, 2, 2, 3];
 const PLAYER_COLORS = ['#ffb547', '#7fd4ff', '#b58bff', '#7dff9a', '#ff7a8a', '#e8e0c8'];
 const allEvents = (id) => EVENTS[id] || STORY_EVENTS[id] || TUTORIAL_EVENTS[id];
 export const MODES = ['local', 'online'];
@@ -61,6 +60,18 @@ export class Game {
   }
   heroName(h) { return h ? h.name : 'qualcuno'; }
   story() { return this.s.tutorial ? TUTORIAL_STORY : STORY[this.s.act]; }
+  // ---- viaggio individuale: ogni eroe ha la sua pedina ----
+  activeHero() { const t = this.s.travel; return t?.order ? this.hero(t.order[t.cur]) : null; }
+  syncFocus() { const h = this.activeHero(); if (h?.pos) this.s.party = { ...h.pos }; }
+  heroesNear(pos, d, aliveOnly = true) { return this.s.heroes.filter((h) => (!aliveOnly || h.alive) && h.pos && hexDist(h.pos, pos) <= d); }
+  speedOrder() {
+    const s = this.s;
+    return this.aliveHeroes().map((h) => [h, heroDerived(h, s).spd]).sort((a, b) => b[1] - a[1] || a[0].name.localeCompare(b[0].name)).map(([h]) => h.id);
+  }
+  newDayTravel(prev) {
+    const order = this.speedOrder();
+    return { stage: 'roll', order, cur: 0, done: [], die: null, steps: 0, wide: false, rollId: prev?.rollId || 0, vedetta: 0 };
+  }
 
   // ---------------- giocatori ----------------
   addPlayer({ name, token, isHost }) {
@@ -176,7 +187,8 @@ export class Game {
   // ---------------- campagna ----------------
   newCampaign({ tutorial = false } = {}) {
     const s = this.s;
-    const seed = crypto.randomInt(1, 2 ** 31);
+    // fixedSeed serve solo ai test: rende la partita ripetibile (in gioco il seme è sempre casuale)
+    const seed = this.fixedSeed ?? crypto.randomInt(1, 2 ** 31);
     s.tutorial = tutorial;
     this.rng = new RNG(seed);
     Object.assign(s, {
@@ -198,8 +210,9 @@ export class Game {
     s.party = { ...s.map.start };
     reveal(s.map, s.party.q, s.party.r, 3);
     s.map.tiles[hkey(s.party.q, s.party.r)].vis = true;
-    s.travel = { stage: 'roll', pool: [], rollId: 0, steps: 0, vedetta: 0 };
-    for (const h of s.heroes) { const d = heroDerived(h, s); h.alive = true; h.hp = d.maxHp; h.mp = d.maxMp; }
+    for (const h of s.heroes) { const d = heroDerived(h, s); h.alive = true; h.hp = d.maxHp; h.mp = d.maxMp; h.pos = { ...s.map.start }; }
+    s.travel = this.newDayTravel(s.travel);
+    this.syncFocus();
     this.startEvent(this.story().intro, null);
   }
 
@@ -341,12 +354,12 @@ export class Game {
         h.row = a.row ? 1 : 0; break;
       }
       // ---- viaggio ----
-      case 'travel_roll': this.travelRoll(); break;
+      case 'travel_roll': this.travelRoll(player); break;
       case 'travel_assign': this.travelAssign(player, a); break;
       case 'travel_unassign': this.travelUnassign(player, a); break;
       case 'travel_confirm': this.travelConfirm(player); break;
-      case 'move': this.move(a); break;
-      case 'end_day': this.endDay(); break;
+      case 'move': this.move(player, a); break;
+      case 'end_turn': case 'end_day': this.endTurn(player); break;
       // ---- eventi e voti ----
       case 'vote': this.vote(player, a.idx); break;
       case 'force_vote': hostOnly(); this.resolveVote(true); break;
@@ -433,70 +446,68 @@ export class Game {
     if (this.s.phase !== 'map') throw 'Non sei sulla mappa';
     if (stage && this.s.travel.stage !== stage) throw 'Non è il momento';
   }
-  travelRoll() {
+  requireActive(player) {
+    const h = this.activeHero();
+    if (!h) throw 'Nessun eroe di turno';
+    if (!this.canControl(player, h)) throw `È il turno di ${h.name}: deve giocarlo chi lo controlla`;
+    return h;
+  }
+  // 1) l'eroe di turno tira il suo dado
+  travelRoll(player) {
     this.requireTravel('roll');
+    const h = this.requireActive(player);
     const t = this.s.travel;
-    t.pool = this.aliveHeroes().map((h) => ({ heroId: h.id, v: this.rng.d(6), face: CLASSES[h.cls].journey, assign: null }));
+    t.die = { heroId: h.id, v: this.rng.d(6), face: CLASSES[h.cls].journey, assign: null };
     t.rollId++;
     t.stage = 'assign';
-    this.log(`Giorno ${this.s.day}: la Riserva del Cammino dà ${t.pool.map((p) => p.v).join(' · ')}.`, 'info');
+    this.log(`🎲 ${h.name} tira il dado del cammino: ${t.die.v}.`, 'info');
   }
-  // I dadi si assegnano uno alla volta, nell'ordine della Riserva: tocca sempre al primo dado libero.
-  travelAssign(player, { heroId, face }) {
+  // 2) sceglie come usarlo (riselezionare lo stesso uso lo toglie, insieme al +1 di specialità)
+  travelAssign(player, { face }) {
     this.requireTravel('assign');
+    this.requireActive(player);
     if (!JOURNEY[face]) throw 'Uso non valido';
-    const pool = this.s.travel.pool;
-    const die = pool.find((p) => p.heroId === heroId);
-    if (!die) throw 'Dado non trovato';
-    if (!this.canControl(player, this.hero(heroId))) throw 'Il dado appartiene a un altro giocatore';
-    if (die.assign) throw 'Dado già assegnato: annullalo per cambiarlo';
-    const cur = pool.find((p) => !p.assign);
-    if (cur !== die) throw `Non è ancora il turno di ${this.heroName(this.hero(heroId))}: tocca a ${this.heroName(this.hero(cur.heroId))}`;
-    die.assign = face;
+    const die = this.s.travel.die;
+    die.assign = die.assign === face ? null : face;
   }
-  // Annulla l'assegnazione di un dado (e quindi anche il suo eventuale +1 di specialità)
-  travelUnassign(player, { heroId }) {
+  travelUnassign(player) {
     this.requireTravel('assign');
-    const die = this.s.travel.pool.find((p) => p.heroId === heroId);
-    if (!die || !die.assign) throw 'Niente da annullare';
-    if (!this.canControl(player, this.hero(heroId)) && !player.isHost) throw 'Il dado appartiene a un altro giocatore';
-    die.assign = null;
+    this.requireActive(player);
+    this.s.travel.die.assign = null;
   }
+  // 3) conferma: applica l'effetto e passa al movimento
   travelConfirm(player) {
     this.requireTravel('assign');
-    const s = this.s, t = s.travel;
-    if (t.pool.some((p) => !p.assign)) {
-      if (!player.isHost) throw 'Tutti i dadi devono essere assegnati';
-      for (const p of t.pool) if (!p.assign) p.assign = 'passi';
+    const h = this.requireActive(player);
+    const s = this.s, t = s.travel, die = t.die;
+    if (!die.assign) throw 'Scegli prima come usare il dado';
+    const v = Math.min(7, die.v + (die.assign === die.face ? 1 : 0));
+    const tile = s.map.tiles[hkey(h.pos.q, h.pos.r)];
+    // ogni eroe viaggia da solo: il Cammino vale il dado + 4 passi, gli altri usi lasciano comunque 3 passi
+    let steps = 3, note = '';
+    if (die.assign === 'passi') { steps = v + 4; note = `${h.name} si mette in cammino`; }
+    if (die.assign === 'foraggio') { const r = v >= 5 ? 3 : v >= 3 ? 2 : 1; s.rations += r; note = `${h.name} raccoglie ${r} razioni`; }
+    if (die.assign === 'vedetta') { t.vedetta += v; if (v >= 5) { t.wide = true; reveal(s.map, h.pos.q, h.pos.r, 3); } note = `${h.name} fa la guardia (${v})`; }
+    if (die.assign === 'ricerca') {
+      if (tile.searched) note = `${h.name} non trova altro qui`;
+      else if (v >= 5) { const it = this.randomLoot('any'); s.bag.push(it); note = `${h.name} trova: ${this.itemLabel(it)}`; tile.searched = true; }
+      else if (v >= 3) { const g = this.rng.int(6, 15) * s.act; s.gold += g; note = `${h.name} trova ${g} oro`; tile.searched = true; }
+      else note = `${h.name} non trova nulla`;
     }
-    let steps = 1, ved = 0, wide = false;
-    const tile = s.map.tiles[hkey(s.party.q, s.party.r)];
-    const notes = [];
-    for (const p of t.pool) {
-      const v = Math.min(7, p.v + (p.assign === p.face ? 1 : 0));
-      const h = this.hero(p.heroId);
-      if (p.assign === 'passi') steps += STEP_TABLE[v];
-      if (p.assign === 'foraggio') { const r = v >= 5 ? 3 : v >= 3 ? 2 : 1; s.rations += r; notes.push(`${h.name} raccoglie ${r} razioni`); }
-      if (p.assign === 'vedetta') { ved += v; if (v >= 5) wide = true; }
-      if (p.assign === 'ricerca') {
-        if (tile.searched) notes.push(`${h.name} non trova altro qui`);
-        else if (v >= 5) { const it = this.randomLoot('any'); s.bag.push(it); notes.push(`${h.name} trova: ${this.itemLabel(it)}`); tile.searched = true; }
-        else if (v >= 3) { const g = this.rng.int(6, 15) * s.act; s.gold += g; notes.push(`${h.name} trova ${g} oro`); tile.searched = true; }
-        else notes.push(`${h.name} non trova nulla`);
-      }
-    }
-    t.steps = steps; t.vedetta = ved; t.wide = wide; t.stage = 'move';
-    if (wide) reveal(s.map, s.party.q, s.party.r, 3);
-    this.log(`Passi: ${steps}. ${notes.join('. ')}`, 'info');
+    t.steps = steps; t.stage = 'move';
+    this.log(`${note}. Passi: ${steps}.`, 'info');
   }
-  move({ q, r }) {
+  // 4) l'eroe di turno si muove
+  move(player, { q, r }) {
     this.requireTravel('move');
+    const h = this.requireActive(player);
     const s = this.s, t = s.travel;
-    if (t.steps <= 0) throw 'Nessun passo rimasto: termina la giornata';
-    const path = findPath(s.map, s.party, { q, r }, t.steps);
+    if (t.steps <= 0) throw 'Nessun passo rimasto: termina il turno';
+    const path = findPath(s.map, h.pos, { q, r }, t.steps);
     if (!path || !path.length) throw 'Destinazione irraggiungibile';
     for (const step of path) {
-      s.party = { q: step.q, r: step.r };
+      h.pos = { q: step.q, r: step.r };
+      s.party = { ...h.pos };
       t.steps--;
       const tile = s.map.tiles[hkey(step.q, step.r)];
       tile.vis = true;
@@ -504,12 +515,13 @@ export class Game {
       if (tile.poi && !tile.poi.done) {
         if (this.triggerPoi(tile)) return;
       }
-      // incontri casuali (stile JRPG)
+      // incontri casuali (stile JRPG): combattono gli eroi vicini
       const bd = BIOMES[tile.b];
       if (bd.danger && !tile.poi && !s.tutorial) {
-        const p = Math.max(2, ((bd.danger + s.threat / 5 + (tile.cor ? 12 : 0)) * 0.3 - t.vedetta * 1.2)) / 100;
+        // ogni eroe cammina da solo: la probabilità si divide tra gli eroi, così gli incontri restano quelli di un gruppo unito
+        const p = Math.max(2, ((bd.danger + s.threat / 5 + (tile.cor ? 12 : 0)) * 0.3 - t.vedetta * 1.2)) / 100 / Math.max(1, this.aliveHeroes().length);
         if (this.rng.chance(p)) {
-          this.log('Un\'imboscata lungo il cammino!', 'bad');
+          this.log(`Un'imboscata colpisce ${h.name} lungo il cammino!`, 'bad');
           s.afterCombat = 'map';
           startCombat(this, 'random');
           return;
@@ -517,10 +529,24 @@ export class Game {
       }
     }
   }
-  endDay() {
+  // 5) fine del turno: tocca al prossimo eroe; dopo l'ultimo cala la notte
+  endTurn(player) {
     this.requireTravel();
+    const h = this.activeHero();
+    if (h && h.alive && !this.canControl(player, h) && !player.isHost) throw `È il turno di ${h.name}`;
+    this.advanceTurn();
+  }
+  advanceTurn() {
+    const s = this.s, t = s.travel;
+    if (t.order[t.cur]) t.done.push(t.order[t.cur]);
+    do { t.cur++; } while (t.cur < t.order.length && !this.hero(t.order[t.cur])?.alive);
+    if (t.cur >= t.order.length) return this.nightfall();
+    Object.assign(t, { stage: 'roll', die: null, steps: 0, wide: false });
+    this.syncFocus();
+    this.log(`➜ Tocca a ${this.activeHero().name}.`, 'sys');
+  }
+  nightfall() {
     const s = this.s;
-    if (s.travel.stage === 'roll') throw 'Prima tira la Riserva del Cammino';
     // razioni
     const alive = this.aliveHeroes();
     let starving = 0;
@@ -537,17 +563,22 @@ export class Game {
     this.spreadCorruption();
     s.day++;
     this.log(`Cala la notte. La Cenere Marea avanza (+${inc}%).`, 'threat');
-    s.travel = { stage: 'roll', pool: [], rollId: s.travel.rollId, steps: 0, vedetta: s.travel.vedetta || 0 };
-    if (s.threat >= 100) return;
+    const ved = s.travel.vedetta || 0;
+    s.travel = this.newDayTravel(s.travel);
+    this.syncFocus();
+    if (!alive.length || s.threat >= 100) return;
+    this.log(`Giorno ${s.day}: apre il cammino ${this.activeHero().name}, il più rapido.`, 'info');
     if (s.day % 5 === 0) this.autosave();
     if (s.tutorial) return;
-    // agguato notturno
-    const tile = s.map.tiles[hkey(s.party.q, s.party.r)];
-    const bd = BIOMES[tile.b];
-    const pAmb = Math.max(0, (bd.danger + s.threat / 4 + (tile.cor ? 10 : 0)) * 0.6 - (s.travel.vedetta || 0) * 2) / 100;
-    s.travel.vedetta = 0;
-    if (!tile.poi && bd.danger && this.rng.chance(pAmb)) {
-      this.log('Agguato nella notte!', 'bad');
+    // agguato notturno: colpisce l'eroe nella posizione più esposta
+    const exposed = alive.map((h) => {
+      const tile = s.map.tiles[hkey(h.pos.q, h.pos.r)];
+      const bd = BIOMES[tile.b];
+      return { h, p: tile.poi || !bd.danger ? 0 : Math.max(0, (bd.danger + s.threat / 4 + (tile.cor ? 10 : 0)) * 0.6 - ved * 2) / 100 };
+    }).sort((a, b) => b.p - a.p)[0];
+    if (exposed && exposed.p > 0 && this.rng.chance(exposed.p)) {
+      this.log(`Agguato nella notte contro ${exposed.h.name}!`, 'bad');
+      s.party = { ...exposed.h.pos };
       s.afterCombat = 'map';
       startCombat(this, 'random', { ambush: true });
     }
@@ -558,7 +589,7 @@ export class Game {
     const target = Math.floor(tiles.length * 0.55 * s.threat / 100);
     let cur = tiles.filter((t) => t.cor).length;
     const beacons = tiles.filter((t) => t.poi?.t === 'beacon' && t.poi.lit);
-    const safe = (t) => beacons.some((b) => hexDist(b, t) <= 2) || (t.poi && ['town', 'boss'].includes(t.poi.t)) || (t.q === s.party.q && t.r === s.party.r);
+    const safe = (t) => beacons.some((b) => hexDist(b, t) <= 2) || (t.poi && ['town', 'boss'].includes(t.poi.t)) || s.heroes.some((h) => h.pos && h.pos.q === t.q && h.pos.r === t.r);
     let guard = 0;
     while (cur < target && guard++ < 200) {
       const front = tiles.filter((t) => !t.cor && !safe(t) && (tiles.some((o) => o.cor && hexDist(o, t) === 1) || t.x >= s.map.w - 2));
@@ -590,6 +621,12 @@ export class Game {
           this.log(`${poi.name}: un sigillo di cenere vi respinge. Completate prima la storia di questo atto (★).`, 'bad');
           return false;
         }
+        // lo scontro finale si combatte tutti insieme: in battaglia entrano gli eroi entro 3 caselle
+        const far = this.aliveHeroes().filter((h) => hexDist(h.pos, tile) > 3);
+        if (far.length) {
+          this.log(`${poi.name}: radunate il gruppo prima dello scontro finale (entro 3 caselle). Mancano: ${far.map((h) => h.name).join(', ')}.`, 'bad');
+          return false;
+        }
         this.startEvent(this.story().boss(s.flags), tile);
         return true;
       }
@@ -601,8 +638,12 @@ export class Game {
   startEvent(id, tile) {
     const s = this.s, ev = allEvents(id);
     if (!ev) throw 'Evento sconosciuto ' + id;
-    const subject = this.rng.pick(this.aliveHeroes()) || s.heroes[0];
+    const act = this.activeHero();
+    const present = tile ? this.heroesNear(tile, 2).map((h) => h.id) : this.aliveHeroes().map((h) => h.id);
+    const subject = (tile && act?.alive ? act : null) || this.rng.pick(this.aliveHeroes()) || s.heroes[0];
+    if (!present.includes(subject.id)) present.push(subject.id);
     s.event = {
+      present,
       id, title: ev.title, art: ev.art, story: !!ev.story, tile: tile ? hkey(tile.q, tile.r) : null,
       subject: subject?.id, text: this.fmt(ev.text, subject), stage: 'choose', roll: null, result: null, chosen: null,
       opts: ev.opts.map((o) => ({ text: this.fmt(o.text, subject), check: o.check || null, locked: this.reqFail(o.req) })),
@@ -675,6 +716,7 @@ export class Game {
     if (s.phase !== 'event' || e.stage !== 'roll') throw 'Nessuna prova in corso';
     const h = this.hero(heroId);
     if (!h || !h.alive) throw 'Eroe non valido';
+    if (e.present && !e.present.includes(h.id)) throw `${h.name} è troppo lontano da qui`;
     if (!this.canControl(player, h)) throw 'Solo il giocatore che controlla questo eroe può tirare';
     this.doRoll(h);
   }
@@ -712,7 +754,9 @@ export class Game {
   }
   finishOption(text, fx, hero, success) {
     const s = this.s, e = s.event;
-    const res = this.applyFx(fx, hero);
+    this.scope = e.present || null;
+    let res;
+    try { res = this.applyFx(fx, hero); } finally { this.scope = null; }
     e.stage = 'result';
     e.result = { text: this.fmt(text || '', hero), success, gains: res.gains };
     e.pending = res;
@@ -741,7 +785,7 @@ export class Game {
     const s = this.s, rng = this.rng;
     const out = { gains: [] };
     const who = (w) => {
-      const alive = this.aliveHeroes();
+      const alive = this.aliveHeroes().filter((h) => !this.scope || this.scope.includes(h.id));
       if (w === 'all') return alive;
       if (w === 'random') return [rng.pick(alive)].filter(Boolean);
       if (w === 'weakest') return [...alive].sort((a, b) => a.hp - b.hp).slice(0, 1);
@@ -845,8 +889,9 @@ export class Game {
     switch (a.svc) {
       case 'locanda': {
         pay(8 * s.act);
-        for (const h of this.aliveHeroes()) { const d = heroDerived(h, s); h.hp = d.maxHp; h.mp = d.maxMp; }
-        this.log('Una notte alla locanda: il gruppo è ristorato. (Salvataggio automatico)', 'good');
+        const guests = this.heroesNear(s.party, 1);
+        for (const h of guests) { const d = heroDerived(h, s); h.hp = d.maxHp; h.mp = d.maxMp; }
+        this.log(`Una notte alla locanda: ${guests.map((h) => h.name).join(', ')} si ristorano. (Salvataggio automatico)`, 'good');
         this.autosave();
         break;
       }
@@ -854,7 +899,7 @@ export class Game {
         const h = this.hero(a.heroId);
         if (!h || h.alive) throw 'Nessun eroe caduto selezionato';
         pay(25 * s.act);
-        h.alive = true; h.hp = Math.round(heroDerived(h, s).maxHp * 0.5);
+        h.alive = true; h.hp = Math.round(heroDerived(h, s).maxHp * 0.5); h.pos = { ...s.party };
         this.log(`Le campane suonano: ${h.name} torna tra i vivi.`, 'good');
         break;
       }
@@ -907,12 +952,13 @@ export class Game {
   // ---------------- accampamento ----------------
   enterCamp() {
     const s = this.s;
-    for (const h of this.aliveHeroes()) {
+    const here = this.heroesNear(s.party, 1);
+    for (const h of here) {
       const d = heroDerived(h, s);
       h.hp = Math.min(d.maxHp, h.hp + Math.round(d.maxHp * 0.4));
       h.mp = Math.min(d.maxMp, h.mp + Math.round(d.maxMp * 0.4));
     }
-    const alive = this.aliveHeroes();
+    const alive = here;
     let scene;
     if (alive.length >= 2) {
       const pairs = [];
@@ -929,7 +975,7 @@ export class Game {
     }
     s.camp = { scene, result: null };
     s.phase = 'camp';
-    this.log('🔥 Il gruppo si accampa (+40% PV e PM).', 'good');
+    this.log(`🔥 ${here.map((h) => h.name).join(', ')} si accampano (+40% PV e PM).`, 'good');
     if (scene) { s.vote = { kind: 'camp', n: 2, votes: {} }; this.tryResolveVote(); }
     else s.camp.result = { text: 'Una notte tranquilla.' };
   }
@@ -960,10 +1006,18 @@ export class Game {
     const s = this.s, c = s.combat;
     if (s.phase !== 'combat' || !c || c.phase === 'fight') throw 'La battaglia non è finita';
     this.clearTimers();
-    if (c.phase === 'fled') syncHeroes(this);
-    if (c.phase === 'defeat') { s.combat = null; return this.defeat(); }
+    if (c.phase === 'fled' || c.phase === 'defeat') syncHeroes(this);
+    if (c.phase === 'defeat') {
+      s.combat = null;
+      if (!this.aliveHeroes().length) return this.defeat();
+      this.log('Gli eroi in battaglia sono caduti, ma i compagni lontani possono ancora soccorrerli (Cappella, Brace Vitale, Risveglio).', 'bad');
+      s.phase = 'map';
+      if (!this.activeHero()?.alive) this.advanceTurn();
+      return;
+    }
     s.combat = null;
     s.phase = 'map';
+    if (!this.activeHero()?.alive) this.advanceTurn();
     for (const h of s.heroes) this.clampHero(h);
     if (c.phase === 'victory' && c.onWin) {
       const r = this.applyFx(c.onWin, null);
@@ -976,9 +1030,9 @@ export class Game {
       s.fate -= 2;
       s.gold = Math.floor(s.gold / 2);
       s.threat = Math.min(100, s.threat + 10);
-      for (const h of s.heroes) { const d = heroDerived(h, s); h.alive = true; h.hp = Math.round(d.maxHp * 0.3); }
+      for (const h of s.heroes) { const d = heroDerived(h, s); h.alive = true; h.hp = Math.round(d.maxHp * 0.3); h.pos = { ...s.map.start }; }
       s.party = { ...s.map.start };
-      s.travel = { stage: 'roll', pool: [], rollId: s.travel?.rollId || 0, steps: 0, vedetta: 0 };
+      s.travel = this.newDayTravel(s.travel);
       s.phase = 'map';
       this.log('✨ L\'Ultima Scintilla: il Fato vi strappa alla morte. Vi risvegliate al villaggio, feriti e impoveriti (−2 Scintille, −50% oro, +10% Cenere).', 'fate');
       this.chron('Caddero, ma il Fato li riportò indietro.');
@@ -1085,6 +1139,8 @@ export class Game {
       const p = Object.values(this.players).find((x) => x.name === h.ownerName && x.connected);
       h.owner = p ? p.id : host.id;
     }
+    for (const h of st.heroes) h.pos ||= { ...(st.party || st.map?.start || { q: 0, r: 0 }) };
+    if (st.map && !st.travel?.order) { st.travel = this.newDayTravel(st.travel); this.syncFocus(); }
     if (st.vote) this.tryResolveVote();
     this.log(`📂 Caricata la partita «${data.meta?.name || file}».`, 'sys');
   }

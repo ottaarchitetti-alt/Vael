@@ -46,7 +46,7 @@ export const STATUSES = {
 };
 
 export const JOURNEY = {
-  passi: { name: 'Cammino', icon: '👣', desc: 'Passi sulla mappa (1-3→1, 4-6→2, 7→3).' },
+  passi: { name: 'Cammino', icon: '👣', desc: 'Passi sulla mappa: valore del dado + 4 (gli altri usi lasciano 3 passi).' },
   foraggio: { name: 'Foraggio', icon: '🍖', desc: 'Razioni raccolte (metà del valore).' },
   vedetta: { name: 'Vedetta', icon: '👁', desc: 'Riduce gli agguati notturni, 5+ allarga la vista.' },
   ricerca: { name: 'Ricerca', icon: '🔍', desc: 'Fruga la casella: 3+ oro, 5+ oggetto.' },

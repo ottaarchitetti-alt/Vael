@@ -427,3 +427,145 @@ button.linkish { background: none; border: 0; box-shadow: none; padding: 1px 0; 
 button.linkish:hover:not(:disabled) { background: none; transform: none; color: var(--gold2); }
 
 #logpanel:empty { display: none; }
+
+/* =====================================================================
+   TEMA «FERRO E LANTERNE»: cornici di ferro battuto con rivetti d'ottone,
+   braci che pulsano, vetro e cenere. Sovrascrive gli stili precedenti.
+   ===================================================================== */
+:root {
+  --iron: #241f27; --iron-hi: #4a424e; --iron-lo: #0f0c12;
+  --brass: #a8834a; --brass-hi: #e6c27c; --ember: #ff8a3a; --ember-soft: rgba(255, 138, 58, .28);
+  --rivet: radial-gradient(circle, #f0d49a 0 1.2px, #a8834a 1.8px, #3a2a16 2.6px, transparent 3.2px);
+  --frame-bg:
+    var(--rivet) 4px 4px / 8px 8px no-repeat,
+    var(--rivet) calc(100% - 4px) 4px / 8px 8px no-repeat,
+    var(--rivet) 4px calc(100% - 4px) / 8px 8px no-repeat,
+    var(--rivet) calc(100% - 4px) calc(100% - 4px) / 8px 8px no-repeat,
+    radial-gradient(ellipse at 50% 120%, rgba(255, 120, 40, .10), transparent 60%),
+    repeating-linear-gradient(115deg, rgba(255,255,255,.012) 0 2px, transparent 2px 5px),
+    linear-gradient(180deg, rgba(40, 33, 40, .97), rgba(18, 14, 20, .97));
+  --frame-shadow:
+    inset 0 0 0 1px rgba(230, 194, 124, .22), inset 0 1px 0 rgba(255, 225, 170, .14),
+    inset 0 -12px 26px rgba(255, 110, 40, .07), 0 0 0 1px #050307, 0 10px 30px rgba(0, 0, 0, .7);
+}
+
+/* cornice di ferro per tutti i pannelli */
+.panel, .modal-box, #logpanel, .quests, .coach, #bottom .travel, .day-order, #tooltip, .toast {
+  background: var(--frame-bg);
+  border: 2px solid #3b3239;
+  border-top-color: #5a4f58; border-bottom-color: #1a141c;
+  border-radius: 3px;
+  box-shadow: var(--frame-shadow);
+}
+h1, h2, h3 { text-shadow: 0 0 18px rgba(255, 150, 60, .35), 0 2px 0 #000; }
+h3, h4 { letter-spacing: .08em; }
+h4 { border-bottom: 1px solid transparent; border-image: linear-gradient(90deg, var(--brass), transparent) 1; }
+
+/* pulsanti: ferro scuro, bordo d'ottone, brace al passaggio */
+button { background: linear-gradient(#3a3139, #1e181f); border: 1px solid #6e5a3e; border-radius: 2px; box-shadow: inset 0 1px 0 rgba(255,220,160,.12), inset 0 -2px 0 rgba(0,0,0,.4), 0 2px 4px rgba(0,0,0,.5); }
+button:hover:not(:disabled) { border-color: var(--brass-hi); background: linear-gradient(#4a3c40, #2a1f22); box-shadow: inset 0 1px 0 rgba(255,220,160,.18), 0 0 12px var(--ember-soft); }
+button.primary { background: linear-gradient(#c88a3c, #8a4e1c 55%, #5e3010); border-color: #f0c47a; color: #fff4dc; box-shadow: inset 0 1px 0 rgba(255,240,200,.45), 0 0 14px rgba(255,140,50,.35), 0 2px 6px rgba(0,0,0,.6); }
+button.primary:hover:not(:disabled) { background: linear-gradient(#e0a050, #a05a22 55%, #6e3814); box-shadow: inset 0 1px 0 rgba(255,240,200,.5), 0 0 20px rgba(255,150,60,.55); }
+button.sel, .chip.sel { border-color: var(--brass-hi); background: linear-gradient(#6e4e28, #3a2612); box-shadow: inset 0 0 8px rgba(255,170,80,.35); }
+button.ghost { background: transparent; box-shadow: none; border-color: rgba(168,131,74,.45); }
+
+/* ---------- barra superiore: trave di ferro ---------- */
+#hud .topbar {
+  height: 62px; padding: 0 18px;
+  background:
+    linear-gradient(180deg, transparent 54px, rgba(230,194,124,.55) 54px 55px, #120e14 55px 58px, transparent 58px),
+    repeating-linear-gradient(90deg, rgba(255,255,255,.015) 0 3px, transparent 3px 7px),
+    linear-gradient(#2c252d, #17121a 92%);
+  box-shadow: 0 6px 18px rgba(0,0,0,.6), 0 2px 14px rgba(255,120,40,.12);
+}
+.tb-left .act { font-size: 1.02rem; text-shadow: 0 0 12px rgba(255,150,60,.4); }
+.tb-center { gap: 22px; }
+.tb-center > * { padding: 4px 10px; border-left: 1px solid rgba(168,131,74,.25); }
+.tb-center > *:first-child { border-left: 0; }
+.threat { width: 290px; display: flex; align-items: center; gap: 8px; }
+.th-body { flex: 1; }
+.th-label { color: #d8c8d0; }
+.th-label b { font-family: var(--pixel); color: #f0d8c8; }
+.th-bar { height: 9px; border-radius: 5px; background: linear-gradient(#0c090e, #1c1520); border: 1px solid #5a4a52; box-shadow: inset 0 2px 3px rgba(0,0,0,.8), 0 1px 0 rgba(255,255,255,.05); }
+.th-fill { background: repeating-linear-gradient(115deg, rgba(255,255,255,.06) 0 4px, transparent 4px 8px), linear-gradient(90deg, #6e6670, #9a6a6a 55%, #e0582a); background-size: 16px 100%, 100% 100%; box-shadow: 0 0 10px rgba(255,90,40,.6); animation: ashdrift 3s linear infinite; }
+@keyframes ashdrift { to { background-position: 16px 0, 0 0; } }
+.threat.dire .th-label { color: #ffb08a; animation: pulse 1.4s infinite; }
+.hourglass { width: 20px; height: 30px; flex: none; filter: drop-shadow(0 0 4px rgba(255,120,40,.35)); }
+.hg-stream { animation: hgflow .6s linear infinite; }
+@keyframes hgflow { 50% { opacity: .4; } }
+/* Scintille del Fato: fiammelle di lanterna */
+.fate { gap: 7px; } .fate small { margin: 0 2px 0 0; }
+.flame { position: relative; width: 14px; height: 22px; display: inline-block; border: 1px solid #6e5a3e; border-radius: 3px 3px 2px 2px; background: linear-gradient(#1e181f, #0f0b10); box-shadow: inset 0 0 4px #000; }
+.flame::before { content: ''; position: absolute; left: 3px; right: 3px; top: -3px; height: 3px; background: #6e5a3e; border-radius: 2px 2px 0 0; }
+.flame i { position: absolute; left: 3px; right: 3px; bottom: 3px; height: 11px; border-radius: 50% 50% 45% 45% / 65% 65% 35% 35%; background: #2a2226; }
+.flame.on { border-color: var(--brass); box-shadow: inset 0 0 6px rgba(255,170,60,.5), 0 0 10px rgba(255,150,50,.45); }
+.flame.on i { background: radial-gradient(ellipse at 50% 75%, #fff6d0 0 25%, #ffc35a 45%, #ff7a2a 75%, transparent 80%); animation: flick 1.6s ease-in-out infinite; animation-delay: var(--d); transform-origin: 50% 100%; }
+@keyframes flick { 0%, 100% { transform: scale(1, 1) skewX(0); } 30% { transform: scale(.92, 1.08) skewX(-4deg); } 60% { transform: scale(1.05, .95) skewX(3deg); } }
+.res { padding: 2px 8px; }
+.pdot { border-color: #2a2228; box-shadow: 0 0 0 1px var(--brass); }
+
+/* ---------- gruppo in basso: targhe di lanterna ---------- */
+.hcard {
+  background: var(--frame-bg); border: 2px solid #3b3239; border-top-color: #5a4f58; border-bottom: 3px solid var(--pc);
+  border-radius: 3px; box-shadow: var(--frame-shadow); padding: 7px 9px 7px 8px;
+}
+.hcard:hover { border-color: var(--brass-hi); border-bottom-color: var(--pc); }
+.hcard.active { box-shadow: var(--frame-shadow), 0 0 0 2px var(--brass-hi), 0 0 26px rgba(255,150,50,.5); }
+.hcard.active .hc-face { box-shadow: 0 0 0 2px var(--brass-hi), 0 0 14px rgba(255,160,60,.7); }
+.hcard.away { opacity: .55; filter: saturate(.6); }
+.hc-away { position: absolute; bottom: -9px; left: 50%; transform: translateX(-50%); white-space: nowrap; font-family: var(--title); font-size: .58rem; letter-spacing: .06em; color: #cfc2a8; background: #1a141c; border: 1px solid #5a4a3a; border-radius: 6px; padding: 0 6px; }
+.hc-face { border-radius: 50% 50% 4px 4px / 40% 40% 4px 4px; padding: 2px; background: radial-gradient(ellipse at 50% 30%, rgba(255,190,110,.35), rgba(30,22,26,.9) 70%); border: 1px solid var(--brass); box-shadow: inset 0 0 8px rgba(0,0,0,.8); }
+.hcard .portrait { border-radius: 50% 50% 3px 3px / 40% 40% 3px 3px; background: transparent; }
+.hc-name { color: var(--brass-hi); text-shadow: 0 1px 0 #000; }
+.hc-turn { background: linear-gradient(#ffd890, #d08a3a); color: #2a1408; box-shadow: 0 0 10px rgba(255,160,60,.7); border: 1px solid #5a3a14; }
+/* barre come tubi di vetro */
+.bar { height: 13px; border-radius: 7px; background: linear-gradient(#08060a, #1a141c); border: 1px solid #4a3e44; box-shadow: inset 0 2px 3px rgba(0,0,0,.9); }
+.bar .fill { border-radius: 6px; position: relative; }
+.bar .fill::after { content: ''; position: absolute; left: 3px; right: 3px; top: 2px; height: 3px; border-radius: 3px; background: rgba(255,255,255,.35); }
+.bar.hp .fill { background: linear-gradient(#ff8a7a, #c8302e 60%, #7a1218); box-shadow: 0 0 8px rgba(255,70,50,.55); }
+.bar.mp .fill { background: linear-gradient(#a8d0ff, #3a78d8 60%, #1a3a7a); box-shadow: 0 0 8px rgba(80,150,255,.5); }
+.bar span { text-shadow: 0 1px 2px #000, 0 0 3px #000; }
+.hc-bars label { color: var(--brass); }
+
+/* ---------- comandi di battaglia: ferro e ottone ---------- */
+.cmd { background: var(--frame-bg); border: 2px solid #4a3f46; border-top-color: #6a5c62; border-radius: 3px; box-shadow: var(--frame-shadow), 0 0 30px rgba(255,120,40,.12); }
+.cmd-title { color: var(--brass-hi); border-bottom: 1px solid rgba(168,131,74,.3); padding-bottom: 6px; }
+.cmd-title small, .cmd-grid button small, .skill-list small { color: #b8a88a; }
+.cmd-grid button, .skill-list button, .targets button { background: linear-gradient(#332a31, #1a1419); border-color: #6e5a3e; }
+.cmd-grid button:hover:not(:disabled), .skill-list button:hover:not(:disabled), .targets button:hover { background: linear-gradient(#4a3a36, #2a1c1a); border-color: var(--brass-hi); box-shadow: 0 0 14px var(--ember-soft); }
+.cmd-grid .wmove { background: linear-gradient(#5a3a22, #2e1c10); border-color: #c8924a; }
+.cmd-grid .wmove:hover:not(:disabled) { background: linear-gradient(#7a4e2a, #3e2412); }
+.skill-list .mp { color: #9ac0ff; }
+.turnbar { background: var(--frame-bg); border: 2px solid #3b3239; border-radius: 18px; box-shadow: var(--frame-shadow); }
+.tb-unit.now { box-shadow: 0 0 0 2px var(--brass-hi), 0 0 12px rgba(255,160,60,.6); }
+
+/* ---------- pannello di viaggio a turni ---------- */
+#bottom .travel { padding: 10px 16px 12px; min-width: 520px; }
+.day-order { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; margin: -2px auto 6px; border-radius: 16px; }
+.do-label { font-family: var(--title); font-size: .72rem; color: var(--brass); margin-right: 6px; letter-spacing: .06em; }
+.do-h { display: inline-flex; width: 26px; height: 26px; border-radius: 50%; border: 1px solid #5a4a3a; background: #120e14; overflow: hidden; transition: transform .2s; }
+.do-h img { width: 100%; image-rendering: pixelated; }
+.do-h.cur { border-color: var(--brass-hi); box-shadow: 0 0 0 2px rgba(230,194,124,.4), 0 0 12px rgba(255,160,60,.7); transform: scale(1.15); }
+.do-h.done { opacity: .35; filter: grayscale(1); }
+.do-h.dead { opacity: .25; filter: grayscale(1) brightness(.5); }
+.do-sep { color: #6e5a3e; font-style: normal; font-size: .8rem; }
+.do-night { margin-left: 4px; filter: drop-shadow(0 0 4px rgba(160,170,255,.5)); }
+.die-row { display: flex; align-items: center; justify-content: center; gap: 18px; margin: 8px 0 4px; }
+.pd-opts.big .jf { display: flex; flex-direction: column; align-items: center; gap: 1px; min-width: 76px; padding: 5px 8px; position: relative; }
+.pd-opts.big .jf span { font-family: var(--title); font-size: .66rem; }
+.pd-opts.big .jf i { position: absolute; right: 3px; top: 1px; }
+.die-sum { font-family: var(--title); font-size: .85rem; color: var(--brass-hi); min-height: 22px; }
+.travel .btnrow { display: flex; justify-content: center; gap: 8px; margin-top: 6px; }
+.travel.move { display: block; }
+.move-row { display: flex; align-items: center; gap: 16px; text-align: left; }
+.steps b { text-shadow: 0 0 12px rgba(255,160,60,.6); }
+
+/* ---------- registro, missioni, guida, menu ---------- */
+.quests .q-head, .coach-head { color: var(--brass-hi); }
+.coach.has-tip { box-shadow: var(--frame-shadow), 0 0 0 1px var(--brass-hi), 0 0 26px rgba(255,160,60,.3); }
+.mode-card { background: linear-gradient(#2e262d, #19141b); border-color: #6e5a3e; }
+.mode-card:hover:not(:disabled) { box-shadow: 0 0 18px var(--ember-soft); }
+.title-menu h1, .lobby-head h1 { color: #f6dca0; text-shadow: 0 0 30px rgba(255,130,40,.7), 0 3px 0 #2a1408; }
+#modal { background: radial-gradient(ellipse, rgba(10,6,12,.2), rgba(6,3,8,.78)); }
+/* vignettatura calda attorno allo schermo */
+#ui::before { content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 0; background: radial-gradient(ellipse at 50% 45%, transparent 55%, rgba(4,2,6,.55) 100%); }

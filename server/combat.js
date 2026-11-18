@@ -1,19 +1,20 @@
 // Combattimento tattico laterale (autoritativo)
-import { SKILLS, CLASSES } from '../shared/data/classes.js';
+import { SKILLS, CLASSES, weaponSkill } from '../shared/data/classes.js';
 import { ENEMIES, ENCOUNTERS } from '../shared/data/enemies.js';
 import { ITEMS } from '../shared/data/items.js';
 import { MYTHIC } from '../shared/data/mythic.js';
-import { heroDerived, heroSkills, STATUSES, ELEMENTS } from '../shared/rules.js';
+import { heroDerived, heroSkills, STATUSES, ELEMENTS, hexDist } from '../shared/rules.js';
 
 const CHARGE_MULT = [1, 1.5, 2, 2.5];
 const CONTROL = ['stun', 'sleep', 'frozen', 'terror'];
 const ENEMY_DELAY = 1150;
+export const BATTLE_RANGE = 3;
 
 // ---------------- Creazione ----------------
 export function buildEncounter(g, spec, tile) {
   const s = g.s, rng = g.rng;
   const table = ENCOUNTERS[s.act];
-  const n = s.heroes.filter((h) => h.alive).length;
+  const n = g.partySize || s.heroes.filter((h) => h.alive).length;
   if (Array.isArray(spec)) return spec;
   const pool = (tile && table[tile.b]) || table.default;
   if (spec === 'elite') {
@@ -28,7 +29,7 @@ export function buildEncounter(g, spec, tile) {
 function enemyUnit(g, id, idx, opts = {}) {
   const s = g.s;
   const d = ENEMIES[id];
-  const n = s.heroes.filter((h) => h.alive).length;
+  const n = g.partySize || s.heroes.filter((h) => h.alive).length;
   const partyScale = d.boss ? 0.45 + 0.2 * n : 0.6 + 0.14 * n;
   const threatScale = 1 + s.threat / 250;
   let hp = Math.round(d.hp * partyScale * (opts.hpMul || 1));
@@ -53,7 +54,7 @@ function heroUnit(g, hero) {
     row: hero.row ?? CLASSES[hero.cls].row, lane: 0,
     hp: hero.alive ? Math.min(hero.hp, d.maxHp) : 0, maxHp: d.maxHp, mp: Math.min(hero.mp, d.maxMp), maxMp: d.maxMp,
     atk: d.atk, mag: d.mag, heal: d.heal, def: d.def, mdef: d.mdef, spd: d.spd, crit: d.crit, eva: d.eva,
-    dmgPct: d.dmgPct, healPct: d.healPct, element: d.element, ranged: d.ranged,
+    dmgPct: d.dmgPct, healPct: d.healPct, element: d.element, ranged: d.ranged, wtype: d.wtype,
     skills: heroSkills(hero), statuses: {}, charge: 0, alive: hero.alive && hero.hp > 0, acted: false,
   };
   return u;
@@ -62,6 +63,9 @@ function heroUnit(g, hero) {
 export function startCombat(g, spec, opts = {}) {
   const s = g.s;
   const tile = s.map.tiles[`${s.party.q},${s.party.r}`];
+  // combattono gli eroi entro 3 caselle dal punto dello scontro: i compagni vicini accorrono (anche i caduti, che si possono rianimare)
+  const inBattle = s.heroes.filter((h) => !h.pos || hexDist(h.pos, s.party) <= BATTLE_RANGE);
+  g.partySize = Math.max(1, inBattle.filter((h) => h.alive).length);
   const ids = buildEncounter(g, spec, tile);
   const enemies = [];
   let hpMul = 1, guardMinus = 0;
@@ -73,7 +77,7 @@ export function startCombat(g, spec, opts = {}) {
   ids.forEach((id, i) => enemies.push(enemyUnit(g, id, i, ENEMIES[id].boss ? { hpMul, guardMinus } : {})));
   // corsie
   for (const row of [0, 1]) enemies.filter((e) => e.row === row).forEach((e, i) => { e.lane = i % 3; });
-  const heroes = s.heroes.map((h) => heroUnit(g, h));
+  const heroes = inBattle.map((h) => heroUnit(g, h));
   // legami: bonus se il partner è in battaglia
   for (const hu of heroes) {
     const h = s.heroes.find((x) => x.id === hu.heroId);
@@ -199,9 +203,15 @@ export function heroAction(g, player, a) {
   const done = () => { u.acted = true; c.lastHero = u.id; g.changed(); later(g, () => nextTurn(g), 950); };
 
   switch (a.kind) {
-    case 'attack': case 'skill': {
-      const skId = a.kind === 'attack' ? 'attacco' : a.skill;
-      if (a.kind === 'skill' && !u.skills.includes(skId)) throw 'Abilità sconosciuta';
+    case 'attack': {
+      // l'attacco dipende dall'arma equipaggiata (vedi WEAPON_MOVES)
+      const sk = weaponSkill(u.wtype, a.move, u.element);
+      useSkill(g, u, sk, resolveTargets(g, u, sk, a.target));
+      return done();
+    }
+    case 'skill': {
+      const skId = a.skill;
+      if (!u.skills.includes(skId)) throw 'Abilità sconosciuta';
       const sk = { id: skId, ...SKILLS[skId] };
       if (a.kind === 'skill' && u.statuses.silence) throw 'Sei sotto Silenzio';
       if (u.mp < sk.mp) throw 'PM insufficienti';
@@ -303,6 +313,7 @@ function resolveTargets(g, u, sk, targetId) {
     case 'enemies': return alive(c, foeSide);
     case 'allies': return alive(c, friendSide);
     case 'self': return [u];
+    case 'randomEnemies': return alive(c, foeSide);
     case 'ally': { const t = unitById(c, targetId); if (!t || t.side !== friendSide || !t.alive) throw 'Bersaglio non valido'; return [t]; }
     case 'deadAlly': { const t = unitById(c, targetId); if (!t || t.side !== friendSide || t.alive) throw 'Scegli un alleato caduto'; return [t]; }
     default: {
@@ -331,12 +342,26 @@ function useSkill(g, u, sk, targets, realActor) {
       const el = g.rng.pick(['fuoco', 'gelo', 'fulmine', 'luce']);
       results.push(applyDamage(g, u, t, null, el, { sk, mult }));
     }
+  } else if (sk.aoe === 'volley') {
+    // colpi su nemici casuali
+    for (let i = 0; i < hits; i++) {
+      const foes = alive(c, actor.side === 'hero' ? 'enemy' : 'hero');
+      if (!foes.length) break;
+      results.push(applyDamage(g, u, g.rng.pick(foes), null, sk.el, { sk, mult }));
+    }
   } else {
-    for (const t of targets) {
+    // attacchi ad area delle armi: il bersaglio scelto + i vicini (sweep) o tutta la sua fila (row)
+    let pairs = targets.map((t) => [t, 1]);
+    if (offensive && targets.length === 1 && (sk.aoe === 'sweep' || sk.aoe === 'row')) {
+      const t0 = targets[0];
+      const others = alive(c, t0.side).filter((o) => o !== t0 && o.row === t0.row && (sk.aoe === 'row' || Math.abs(o.lane - t0.lane) <= 1));
+      pairs = [[t0, 1], ...others.map((o) => [o, sk.aoe === 'row' ? 1 : 0.6])];
+    }
+    for (const [t, factor] of pairs) {
       if (offensive) {
         for (let i = 0; i < hits; i++) {
           if (!t.alive) break;
-          const r = applyDamage(g, u, t, null, sk.el, { sk, mult });
+          const r = applyDamage(g, u, t, null, sk.el, { sk, mult: mult * factor });
           results.push(r);
           if (r.dmg && sk.drain) { const h = Math.round(r.dmg * sk.drain); actor.hp = Math.min(actor.maxHp, actor.hp + h); results.push({ id: actor.id, heal: h }); }
           if (r.miss) break;
@@ -368,7 +393,8 @@ function useSkill(g, u, sk, targets, realActor) {
     }
   }
   if (sk.kind !== 'buff' || !sk.special?.startsWith('charge')) actor.charge = 0;
-  c.last = { seq: ++c.seq, actor: actor.id, name: sk.name, el: sk.el, kind: sk.kind, summon: !!sk.summon, concert: !!sk.concert, results };
+  const ranged = !!(sk.reach || sk.kind === 'mag' || (sk.id === 'attacco' && u.ranged));
+  c.last = { seq: ++c.seq, actor: actor.id, name: sk.name, el: sk.el, kind: sk.kind, summon: !!sk.summon, concert: !!sk.concert, ranged, aoe: sk.aoe || (sk.target === 'enemies' ? 'all' : null), results };
   const dmgTot = results.reduce((t, r) => t + (r.dmg || 0), 0);
   g.log(`${actor.name}: ${sk.name}${dmgTot ? ` (${dmgTot} danni)` : ''}${results.some((r) => r.broke) ? ' — SPEZZATO!' : ''}`, actor.side === 'hero' ? 'combat' : 'enemy');
   checkBossPhase(g);
@@ -412,7 +438,7 @@ function applyDamage(g, u, t, flat, el, { sk = SKILLS.attacco, mult = 1 } = {}) 
   dmg *= mult;
   if (u.side === 'hero' && phys && u.row === 1 && !sk.reach && !u.ranged) dmg *= 0.6;
   if (phys && flat == null) {
-    const critCh = (u.crit || 5) + (ts.marked ? 15 : 0);
+    const critCh = (u.crit || 5) + (sk.crit || 0) + (ts.marked ? 15 : 0);
     if (sk.special === 'sure' || rng.chance(critCh / 100)) { dmg *= 1.6; r.crit = true; }
   }
   dmg = Math.max(1, Math.round(dmg));

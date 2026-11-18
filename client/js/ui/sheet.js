@@ -3,7 +3,7 @@ import { CLASSES, SKILLS } from '/shared/data/classes.js';
 import { ITEMS } from '/shared/data/items.js';
 import { TALENTS, TRAITS, TRANSFORMS, BONDS } from '/shared/data/heroes.js';
 import { heroDerived, heroSkills, STATS, STAT_NAMES, STAT_ABBR, SLOTS, SLOT_NAMES, xpToNext, ELEMENTS, mod, checkBonus } from '/shared/rules.js';
-import { heroFull, heroPortrait } from '../render/pixel.js';
+import { heroFull, heroPortrait } from '../render/rig.js';
 import { esc, bar, itemHtml, bonusText } from './util.js';
 
 export function renderSheet(app) {

@@ -1,6 +1,7 @@
 // Scena di battaglia laterale HD-2D
 import { THREE, PixelSprite, texFromCanvas } from './engine.js';
-import { heroSheet, enemySheet, HERO_W, HERO_H, HERO_FRAMES, HERO_ANIM, decor, tileTexture, canvas, shade, glowTexture } from './pixel.js';
+import { decor, tileTexture, canvas, shade, glowTexture } from './pixel.js';
+import { Rig, heroDef, enemyDef, ANIM_DUR } from './rig.js';
 import { BIOMES, ACTS } from '/shared/data/mythic.js';
 import { ENEMIES } from '/shared/data/enemies.js';
 import { ELEMENTS, STATUSES } from '/shared/rules.js';
@@ -8,6 +9,20 @@ import { ELEMENTS, STATUSES } from '/shared/rules.js';
 const PX = 0.042;
 // telecamera "alle spalle" degli eroi, rialzata, in vista quasi assonometrica
 const CAM = { pos: new THREE.Vector3(15, 9, 10.5), look: new THREE.Vector3(0.2, 0.2, -0.4) };
+// movimento continuo per tipo: oscillazione, respiro (volume costante), saltello, velocità
+const MOTION = {
+  hero: { sway: 0.02, breath: 0.022, bob: 0, rate: 2.2 },
+  beast: { sway: 0.03, breath: 0.035, bob: 0.025, rate: 3.4 },
+  cultist: { sway: 0.04, breath: 0.02, bob: 0, rate: 1.6 },
+  bandit: { sway: 0.03, breath: 0.022, bob: 0.01, rate: 2.0 },
+  specter: { sway: 0.06, breath: 0.03, bob: 0, rate: 1.4 },
+  moth: { sway: 0.05, breath: 0.05, bob: 0, rate: 4.0 },
+  slime: { sway: 0.01, breath: 0.08, bob: 0.02, rate: 2.4 },
+  knight: { sway: 0.015, breath: 0.015, bob: 0, rate: 1.2 },
+  toad: { sway: 0.02, breath: 0.06, bob: 0.015, rate: 2.0 },
+  crab: { sway: 0.03, breath: 0.02, bob: 0.01, rate: 2.6 },
+  default: { sway: 0.025, breath: 0.02, bob: 0, rate: 1.6 },
+};
 const ELCOL = { fuoco: '#ff7a2f', gelo: '#7fd4ff', fulmine: '#ffe45c', luce: '#fff2b0', ombra: '#a77bff', taglio: '#ffffff', punta: '#ffffff', botta: '#e8d8b8' };
 
 export class BattleView {
@@ -16,7 +31,7 @@ export class BattleView {
     this.overlay = overlay;
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 0.5, 120);
-    this.tilt = { focus: 0.5, band: 0.22, amount: 2.0 };
+    this.tilt = { focus: 0.5, band: 0.34, amount: 1.2 }; // fascia nitida più ampia: gli sprite restano definiti
     this.bloom = { strength: 0.22, threshold: 0.95 };
     this.units = new Map();
     this.anims = [];
@@ -63,6 +78,9 @@ export class BattleView {
     this.parts = new THREE.Points(g, new THREE.PointsMaterial({ map: texFromCanvas(glowTexture('#ffffff')), size: 0.35, vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
     s.add(this.parts);
     this.pIdx = 0;
+    // proiettili degli attacchi a distanza
+    this.glowTex = texFromCanvas(glowTexture('#ffffff'));
+    this.projs = [];
     // braci ambientali
     const E = 120, ep = new Float32Array(E * 3);
     for (let i = 0; i < E; i++) { ep[i * 3] = (Math.random() - 0.5) * 24; ep[i * 3 + 1] = Math.random() * 6; ep[i * 3 + 2] = -6 + Math.random() * 9; }
@@ -156,23 +174,23 @@ export class BattleView {
   }
 
   reset(state, key) {
-    for (const e of this.units.values()) { this.scene.remove(e.sp); e.label.remove(); }
+    for (const e of this.units.values()) { this.scene.remove(e.sp); e.rig.dispose(); e.label.remove(); }
     this.units.clear();
     this.combatKey = key;
+    for (const p of this.projs) this.scene.remove(p.sp);
+    this.projs = [];
     this.lastSeq = state.combat.last?.seq ?? -1;
     this.buildEnv(state.combat.bg, state.act);
     this.engine.flash('#ffffff', 0.5);
   }
 
   addUnit(u, state) {
-    let sp;
-    if (u.side === 'hero') {
-      const h = state.heroes.find((x) => x.id === u.heroId);
-      sp = new PixelSprite(heroSheet(h), HERO_W, HERO_H, HERO_FRAMES, PX * 1.05, { shadow: true });
-    } else {
-      const s = enemySheet(u.enemyId);
-      sp = new PixelSprite(s.canvas, s.w, s.h, 4, PX * (ENEMIES[u.enemyId].size > 1.5 ? 1.1 : 1), { shadow: true, emissive: '#000000' });
-    }
+    // marionetta in pixel art: arti e arma si muovono separatamente
+    const rig = new Rig(u.side === 'hero' ? heroDef(state.heroes.find((x) => x.id === u.heroId)) : enemyDef(u.enemyId));
+    rig.setUnitId(u.id);
+    const sp = rig.group;
+    sp.mesh = rig.mesh; sp.blob = rig.blob; sp.h = rig.h;
+    sp.mat = { emissive: new THREE.Color(0, 0, 0), opacity: 1, transparent: false, emissiveIntensity: 1 }; // applicati a tutti i pezzi
     const pos = this.unitPos(u);
     sp.position.copy(pos);
     if (u.side === 'enemy') sp.position.x -= 6; else sp.position.x += 6; // entrata in scena
@@ -180,9 +198,8 @@ export class BattleView {
     const label = document.createElement('div');
     label.className = 'unit-label ' + u.side + (u.boss ? ' boss' : '');
     this.overlay.appendChild(label);
-    const e = { u, sp, home: pos, label, phase: Math.random() * 6, offset: new THREE.Vector3(), hitT: 0, atkT: 0, dead: !u.alive, deathT: 1, isHero: u.side === 'hero', anim: null, knock: 0, sqx: 1, sqy: 1, hop: 0 };
+    const e = { u, sp, rig, home: pos, label, phase: Math.random() * 6, offset: new THREE.Vector3(), hitT: 0, atkT: 0, dead: !u.alive, deathT: 1, isHero: u.side === 'hero', face: u.side === 'enemy' ? -1 : 1, kind: u.side === 'hero' ? 'hero' : ENEMIES[u.enemyId]?.kind, flashT: 0, lean: 0, eAnim: null, anim: null, knock: 0, sqx: 1, sqy: 1, hop: 0 };
     if (!u.alive && u.side !== 'hero') sp.visible = false;
-    sp.mesh.userData.unitId = u.id;
     this.units.set(u.id, e);
     return e;
   }
@@ -190,7 +207,7 @@ export class BattleView {
   pickUnit(cx, cy) {
     const v = new THREE.Vector2((cx / innerWidth) * 2 - 1, -(cy / innerHeight) * 2 + 1);
     this.ray.setFromCamera(v, this.camera);
-    const meshes = [...this.units.values()].filter((e) => e.sp.visible).map((e) => e.sp.mesh);
+    const meshes = [...this.units.values()].filter((e) => e.sp.visible).flatMap((e) => e.rig.meshes);
     const hit = this.ray.intersectObjects(meshes, false)[0];
     return hit ? hit.object.userData.unitId : null;
   }
@@ -228,17 +245,17 @@ export class BattleView {
     if (actor) {
       actor.atkT = 0.6;
       if (actor.isHero) {
-        const melee = last.kind === 'phys' && !last.concert && !last.summon;
-        if (melee) actor.anim = { frames: HERO_ANIM.attack, t: 0, dur: 0.55, delay: 0.22, strike: true };
-        else if (last.name === 'Difesa') actor.anim = { frames: HERO_ANIM.guard, t: 0, dur: 0.9 };
-        else if (last.kind || last.charge || last.summon || last.concert) { actor.anim = { frames: HERO_ANIM.cast, t: 0, dur: 0.8 }; actor.hop = 0.35; actor.sqy = 1.12; actor.sqx = 0.92; }
-        else actor.anim = { frames: HERO_ANIM.walk, t: 0, dur: 0.5 };
-      } else { actor.sqx = 1.12; actor.sqy = 0.9; }
+        const strike = last.kind === 'phys' && !last.concert && !last.summon;
+        if (strike) actor.rig.play('attack');
+        else if (last.name === 'Difesa') actor.rig.setAnim('guard');
+        else if (last.kind || last.charge || last.summon || last.concert) { actor.rig.play('cast'); actor.hop = 0.35; actor.sqy = 1.12; actor.sqx = 0.92; }
+        else actor.rig.setAnim('walk');
+      } else { actor.eAnim = { t: 0, dur: 0.75 }; actor.rig.play(last.kind === 'mag' || last.kind === 'heal' || last.kind === 'buff' ? 'cast' : 'attack'); }
       const tgt = last.results.find((r) => r.id !== last.actor && r.dmg != null);
       const offensive = last.kind === 'phys' || last.kind === 'mag';
-      if (tgt && last.kind === 'phys' && !last.concert && !last.summon) {
+      if (tgt && last.kind === 'phys' && !last.concert && !last.summon && !last.ranged) {
         const te = this.units.get(tgt.id);
-        if (te) actor.lunge = { to: te.home.clone().lerp(actor.home, 0.35), t: 0 };
+        if (te) actor.lunge = { to: te.home.clone().lerp(actor.home, 0.35), t: actor.isHero ? 0 : -0.45 };
       }
       if (last.kind === 'mag' || last.kind === 'heal' || last.kind === 'buff') this.burst(actor.sp.position.clone().add(new THREE.Vector3(0, 0.8, 0)), last.kind === 'heal' ? '#7dff9a' : ELCOL[last.el] || '#ffe8a0', 18, 0.6, 1.2);
       if (!last.summon) this.popup(last.actor, last.name, 'skillname');
@@ -247,9 +264,19 @@ export class BattleView {
       if (last.charge) this.burst(actor.sp.position.clone().add(new THREE.Vector3(0, 0.5, 0)), '#ffd27a', 25 * last.charge, 0.4, 1.6);
       void offensive;
     }
+    // a distanza: un proiettile per bersaglio, niente corsa verso il nemico
+    const shot = actor && last.ranged && !last.summon && !last.concert;
+    if (shot) {
+      const ids = [...new Set(last.results.filter((r) => r.id !== last.actor && (r.dmg != null || r.miss)).map((r) => r.id))].slice(0, 6);
+      ids.forEach((id, k) => {
+        const te = this.units.get(id);
+        if (te) this.shoot(actor.sp.position.clone().add(new THREE.Vector3(0, actor.sp.h * 0.6, 0)), te.sp.position.clone().add(new THREE.Vector3(0, te.sp.h * 0.5, 0)), last.kind === 'phys' && !last.el ? '#f4ecd8' : ELCOL[last.el] || '#ffe8a0', k * 0.09, last.kind === 'phys');
+      });
+    }
+    if (last.aoe === 'row' || last.aoe === 'all') setTimeout(() => { this.shake = 0.3; }, shot ? 420 : 300);
     let i = 0;
     for (const r of last.results) {
-      const delay = 300 + i * 140;
+      const delay = (shot ? 430 : 300) + i * 140;
       i++;
       const te = this.units.get(r.id);
       setTimeout(() => {
@@ -257,9 +284,11 @@ export class BattleView {
         const p = te.sp.position.clone().add(new THREE.Vector3(0, te.sp.h * 0.45, 0));
         if (r.dmg != null) {
           te.hitT = 0.4;
+          te.flashT = 0.14;
+          this.hitStop = Math.max(this.hitStop || 0, r.crit || r.broke ? 0.11 : 0.05);
           te.knock = te.isHero ? 0.45 : -0.45;
           te.sqx = 0.86; te.sqy = 1.1;
-          if (te.isHero) te.anim = null;
+          te.rig.play('hurt');
           this.burst(p, ELCOL[r.el] || '#ffffff', r.crit ? 40 : 22, 1.1);
           this.fxLight.position.copy(p).add(new THREE.Vector3(0, 0.5, 1));
           this.fxLight.color.set(ELCOL[r.el] || '#ffffff'); this.fxLight.intensity = 14;
@@ -293,6 +322,14 @@ export class BattleView {
     setTimeout(() => b.remove(), 2000);
   }
 
+  shoot(from, to, color, delay, arrow) {
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+    sp.scale.setScalar(arrow ? 0.28 : 0.5);
+    sp.visible = false;
+    this.scene.add(sp);
+    this.projs.push({ sp, from, to, color, t: -delay, dur: arrow ? 0.26 : 0.36, arc: arrow ? 0.35 : 0.15 });
+  }
+
   setTargets(ids) { this.targets = new Set(ids || []); }
 
   update(dt, t) {
@@ -306,78 +343,91 @@ export class BattleView {
     for (const o of this.env.children) if (o.isGroup) face(o);
     for (const e of this.units.values()) face(e.sp);
     this.fxLight.intensity = Math.max(0, this.fxLight.intensity - dt * 30);
+    // fermo-immagine sull'impatto: per un istante i personaggi quasi si fermano, il colpo «pesa»
+    this.hitStop = Math.max(0, (this.hitStop || 0) - dt);
+    const adt = this.hitStop > 0 ? dt * 0.08 : dt;
     for (const e of this.units.values()) {
       const sp = e.sp, u = e.u;
+      const M = MOTION[e.kind] || MOTION.default;
       // ritorno a casa / entrata, con contraccolpo quando viene colpito
       let goal = e.home.clone();
-      e.knock *= Math.max(0, 1 - dt * 7);
+      e.knock *= Math.max(0, 1 - adt * 7);
       goal.x += e.knock;
+      let lean = 0;
       if (e.lunge) {
-        e.lunge.t += dt * 2.2;
-        const k = e.lunge.t < 0.5 ? e.lunge.t * 2 : Math.max(0, 2 - e.lunge.t * 2);
+        e.lunge.t += adt * 2.2;
+        const lt = Math.max(0, e.lunge.t);
+        const k = lt < 0.5 ? lt * 2 : Math.max(0, 2 - lt * 2);
         goal = e.home.clone().lerp(e.lunge.to, k * k * (3 - 2 * k));
         sp.position.copy(goal);
         if (e.lunge.t >= 1) e.lunge = null;
-      } else sp.position.lerp(goal, Math.min(1, dt * 8));
+      } else sp.position.lerp(goal, Math.min(1, adt * 8));
+      const walking = !e.lunge && sp.position.distanceTo(goal) > 0.12; // entrata in scena
       // schiacciamento / allungamento che torna a 1
-      e.sqx += (1 - e.sqx) * Math.min(1, dt * 9); e.sqy += (1 - e.sqy) * Math.min(1, dt * 9);
-      let frame;
+      e.sqx += (1 - e.sqx) * Math.min(1, adt * 9); e.sqy += (1 - e.sqy) * Math.min(1, adt * 9);
       const disabled = u.broken > 0 || u.statuses?.stun || u.statuses?.sleep || u.statuses?.frozen;
+      // animazione continua di base: le azioni a tempo (attacco, magia, colpito) hanno la precedenza
+      const rig = e.rig;
       if (e.isHero) {
-        const idle = HERO_ANIM.idle;
-        frame = idle[Math.floor(t * 5 + e.phase) % idle.length];
-        if (u.defending) frame = HERO_ANIM.guard[0];
-        if (disabled) frame = idle[0];
-        if (e.anim) {
-          const a = e.anim;
-          a.t += dt;
-          if (e.lunge && e.lunge.t < 0.45) frame = HERO_ANIM.walk[Math.floor(t * 12) % 4];
-          else {
-            const tt = Math.max(0, a.t - (a.delay || 0)) / (a.dur - (a.delay || 0));
-            const idx = Math.min(a.frames.length - 1, Math.floor(tt * a.frames.length));
-            frame = a.frames[idx];
-            if (a.strike && idx === 1 && !a.hitSq) { a.hitSq = true; e.sqx = 1.16; e.sqy = 0.9; }
-          }
-          if (a.t >= a.dur) e.anim = null;
-        }
-        if (e.hitT > 0) { e.hitT -= dt; frame = HERO_ANIM.hurt[0]; }
-        if (e.dead) frame = HERO_ANIM.ko[0];
-        // esultanza alla vittoria
-        if (this.state?.combat?.phase === 'victory' && !e.dead) {
-          frame = Math.floor(t * 3 + e.phase) % 2 ? HERO_ANIM.cast[0] : HERO_ANIM.idle[0];
-          sp.mesh.position.y = Math.abs(Math.sin(t * 6 + e.phase)) * 0.18;
-        }
+        if (e.dead) rig.setAnim('ko');
+        else if (this.state?.combat?.phase === 'victory') rig.setAnim('cheer');
+        else if (!ANIM_DUR[rig.anim]) rig.setAnim(walking || (e.lunge && e.lunge.t < 0.45) ? 'walk' : u.defending ? 'guard' : 'idle');
+        if (e.hitT > 0) { e.hitT -= adt; lean = -0.16; }
       } else {
-        frame = Math.floor(t * 2.2 + e.phase) % 2;
-        if (e.atkT > 0) { e.atkT -= dt; frame = 2; }
-        if (e.hitT > 0) { e.hitT -= dt; frame = 3; }
-        if (disabled) frame = frame === 3 ? 3 : 0;
+        if (!ANIM_DUR[rig.anim]) rig.setAnim(walking ? 'walk' : 'idle');
+        // carica (si tira indietro e si schiaccia), colpo (scatta in avanti), ritorno
+        if (e.eAnim) {
+          const ea = e.eAnim; ea.t += adt;
+          const k = ea.t / ea.dur;
+          if (k < 0.38) { const w = k / 0.38; lean = -0.2 * w; e.sqx = 1 + 0.08 * w; e.sqy = 1 - 0.1 * w; }
+          else if (k < 0.62) { lean = -0.2 + 0.42 * ((k - 0.38) / 0.24); e.sqx = 1.18; e.sqy = 0.86; }
+          else lean = 0.22 * (1 - (k - 0.62) / 0.38);
+          if (ea.t >= ea.dur) e.eAnim = null;
+        }
+        if (e.atkT > 0) e.atkT -= adt;
+        if (e.hitT > 0) { e.hitT -= adt; lean = -0.2; }
       }
-      sp.mesh.position.x = e.hitT > 0 ? Math.sin(t * 80) * 0.05 : 0;
-      sp.setFrame(frame);
-      // respiro e salti
-      const breath = e.dead ? 1 : 1 + Math.sin(t * 2.4 + e.phase) * 0.015;
-      sp.mesh.scale.set(e.sqx, e.sqy * breath, 1);
-      e.hop = Math.max(0, e.hop - dt);
+      rig.update(disabled && !e.dead ? adt * 0.2 : adt);
+      sp.mesh.position.x = e.hitT > 0 ? Math.sin(t * 80) * 0.04 : 0;
+      // movimento continuo: respiro a volume costante, oscillazione del peso, saltello
+      const lively = !e.dead && !disabled;
+      const ph = t * M.rate + e.phase;
+      const br = 0; // il respiro lo fa la marionetta
+      const sway = lively ? Math.sin(ph * 0.55) * M.sway * 0.5 : 0;
+      e.lean += (lean - e.lean) * Math.min(1, adt * 14);
+      // gli sprite sono disegnati rivolti a sinistra: i nemici (a sinistra) si specchiano per guardare gli eroi
+      sp.mesh.scale.set(e.sqx * (1 - br * 0.5) * e.face, e.sqy * (1 + br), 1);
+      sp.mesh.rotation.z = (sway + e.lean) * e.face;
+      e.hop = Math.max(0, e.hop - adt);
       const hopY = e.hop > 0 ? Math.sin((1 - e.hop / 0.5) * Math.PI) * 0.35 * Math.min(1, e.hop * 4) : 0;
+      const bobY = lively ? Math.abs(Math.sin(ph)) * M.bob : 0;
+      const walkY = walking ? Math.abs(Math.sin(t * 12 + e.phase)) * 0.07 : 0;
       // fluttuazione per spettri / falene
-      const fl = u.side === 'enemy' && ['specter', 'moth', 'queen'].includes(ENEMIES[u.enemyId]?.kind) ? 0.25 + Math.sin(t * 2 + e.phase) * 0.12 : 0;
-      if (!(e.isHero && this.state?.combat?.phase === 'victory')) sp.mesh.position.y = fl + hopY;
-      // morte: i nemici svaniscono, gli eroi restano in ginocchio (possono essere rianimati)
+      const fl = u.side === 'enemy' && ['specter', 'moth', 'queen'].includes(e.kind) ? 0.25 + Math.sin(t * 2 + e.phase) * 0.12 : 0;
+      if (!(e.isHero && this.state?.combat?.phase === 'victory')) sp.mesh.position.y = fl + hopY + bobY + walkY;
+      if (sp.blob) sp.blob.scale.setScalar(Math.max(0.55, 1 - (hopY + walkY + fl * 0.6) * 0.9));
+      // morte: i nemici cadono all'indietro e svaniscono, gli eroi restano in ginocchio (possono essere rianimati)
       if (e.dead && !e.isHero) {
-        e.deathT = Math.min(1, e.deathT + dt * 1.2);
-        sp.mat.transparent = true; sp.mat.opacity = 1 - e.deathT;
-        sp.mesh.position.y = fl - e.deathT * 0.3;
-        if (e.deathT >= 1) sp.visible = false;
+        e.deathT = Math.min(1, e.deathT + adt * 1.3);
+        const d = e.deathT;
+        sp.mat.transparent = true; sp.mat.opacity = d < 0.45 ? 1 : 1 - (d - 0.45) / 0.55;
+        sp.mesh.rotation.z = -Math.min(1, d * 2.2) * 1.25 * e.face;
+        sp.mesh.position.y = fl * (1 - d) - d * 0.15;
+        if (sp.blob) sp.blob.visible = d < 0.6;
+        if (d >= 1) sp.visible = false;
       }
       // colore per stati
       const em = sp.mat.emissive;
-      if (u.statuses?.frozen) em.set('#3a7aaa');
+      e.flashT = Math.max(0, e.flashT - dt);
+      if (e.flashT > 0) em.setRGB(1, 1, 1).multiplyScalar(e.flashT / 0.14 * 1.4);
+      else if (u.statuses?.frozen) em.set('#3a7aaa');
       else if (u.broken > 0) em.set('#4a3a10');
       else if (this.targets.has(u.id) && this.hoverId === u.id) em.set('#5a4a20');
       else if (this.targets.has(u.id)) em.setRGB(0.12 + Math.sin(t * 6) * 0.08, 0.1, 0.02);
       else em.set('#000000');
       sp.mat.emissiveIntensity = 1;
+      rig.setEmissive(em.r, em.g, em.b);
+      rig.setOpacity(sp.mat.opacity);
       // etichetta HTML
       const p = sp.position.clone(); p.y += sp.h + 0.15 + fl;
       p.project(this.camera);
@@ -391,6 +441,18 @@ export class BattleView {
     const act = this.units.get(this.activeId);
     if (act && act.sp.visible) { this.ring.visible = true; this.ring.position.set(act.sp.position.x, 0.03, act.sp.position.z); this.ring.scale.setScalar(1 + Math.sin(t * 5) * 0.06); }
     else this.ring.visible = false;
+    // proiettili
+    for (const p of this.projs) {
+      p.t += dt;
+      if (p.t < 0) continue;
+      const k = Math.min(1, p.t / p.dur);
+      p.sp.visible = true;
+      p.sp.position.copy(p.from).lerp(p.to, k);
+      p.sp.position.y += Math.sin(k * Math.PI) * p.arc;
+      this.burst(p.sp.position, p.color, 2, 0.15, 0.2);
+      if (k >= 1) { p.done = true; this.burst(p.to, p.color, 14, 0.8); this.scene.remove(p.sp); p.sp.material.dispose(); }
+    }
+    this.projs = this.projs.filter((p) => !p.done);
     // particelle
     for (let k = 0; k < this.pLife.length; k++) {
       if (this.pLife[k] <= 0) { this.pPos[k * 3 + 1] = -99; continue; }

@@ -6,11 +6,13 @@ import { RNG } from '../server/rng.js';
 import { findPath } from '../server/mapgen.js';
 import { STORY } from '../shared/data/story.js';
 import { TUTORIAL_STORY } from '../shared/data/tutorial.js';
-import { heroDerived, successChance, checkBonus, hkey } from '../shared/rules.js';
+import { heroDerived, successChance, checkBonus, hkey, hexDist } from '../shared/rules.js';
 import { BIOMES } from '../shared/data/mythic.js';
 
-function makeGame() {
+// con un seme fisso la partita è ripetibile: stessi dadi, stessa mappa, stesso esito
+function makeGame(seed) {
   const g = new Game(() => {});
+  if (seed != null) { g.fixedSeed = seed; g.rng = new RNG(seed); }
   const q = [];
   g.timer = (fn) => q.push(fn);
   g.flush = () => { let n = 0; while (q.length && n++ < 80) q.shift()(); };
@@ -35,24 +37,29 @@ function bot(g, p, maxSteps = 20000) {
         const e = s.event;
         if (e.stage === 'choose') g.handle(p, { type: 'vote', idx: Math.max(0, e.opts.findIndex((o) => !o.locked)) });
         else if (e.stage === 'roll') {
-          const best = s.heroes.filter((h) => h.alive).sort((a, b) => checkBonus(b, e.check.stat, s) - checkBonus(a, e.check.stat, s))[0];
+          const best = s.heroes.filter((h) => h.alive && (!e.present || e.present.includes(h.id))).sort((a, b) => checkBonus(b, e.check.stat, s) - checkBonus(a, e.check.stat, s))[0];
           g.handle(p, { type: 'roll_check', heroId: best.id });
         } else if (e.stage === 'rolled') g.handle(p, { type: !e.roll.success && s.fate > 2 ? 'reroll' : 'accept_roll' });
         else g.handle(p, { type: 'event_continue' });
       } else if (s.phase === 'map') {
         const t = s.travel;
         revealAll(s);
+        const h = g.activeHero();
         if (t.stage === 'roll') g.handle(p, { type: 'travel_roll' });
         else if (t.stage === 'assign') {
-          t.pool.forEach((d, k) => g.handle(p, { type: 'travel_assign', heroId: d.heroId, face: k === 0 && s.rations < 6 ? 'foraggio' : 'passi' }));
+          g.handle(p, { type: 'travel_assign', face: t.cur === 0 && s.rations < 6 ? 'foraggio' : 'passi' });
           g.handle(p, { type: 'travel_confirm' });
         } else if (t.steps > 0) {
           const goal = target(s);
-          const full = findPath(s.map, s.party, goal, 200);
-          if (!full) throw new Error('nessun percorso verso l\'obiettivo');
-          const step = full[Math.min(t.steps, full.length) - 1];
+          const full = findPath(s.map, h.pos, goal, 200);
+          if (!full) throw new Error("nessun percorso verso l'obiettivo");
+          // il gruppo resta unito: nessuno va più di 2 caselle avanti al più lento
+          const behind = Math.max(...g.aliveHeroes().map((x) => (findPath(s.map, x.pos, goal, 200) || []).length));
+          const allowed = full.length >= behind ? Math.min(t.steps, full.length) : Math.min(t.steps, full.length - Math.max(0, behind - 2));
+          if (allowed <= 0) { g.handle(p, { type: 'end_turn' }); continue; }
+          const step = full[allowed - 1];
           g.handle(p, { type: 'move', q: step.q, r: step.r });
-        } else g.handle(p, { type: 'end_day' });
+        } else g.handle(p, { type: 'end_turn' });
       } else if (s.phase === 'town') {
         if (s.town.services.includes('locanda') && s.gold > 40) { try { g.handle(p, { type: 'town', svc: 'locanda' }); } catch {} }
         for (const h of s.heroes.filter((x) => !x.alive)) { try { g.handle(p, { type: 'town', svc: 'cappella', heroId: h.id }); } catch {} }
@@ -128,10 +135,13 @@ test('mappe: il boss è sempre raggiungibile', () => {
   }
 });
 
+const CAMPAIGN_SEEDS = [1, 2, 3];
 test('campagna completa fino al finale (party forte)', () => {
   let endings = 0;
-  for (let run = 0; run < 3; run++) {
-    const g = makeGame();
+  // semi fissi: il test gioca sempre le stesse partite. SIMSEEDS=1,2,3 permette di provarne altre.
+  const seeds = process.env.SIMSEEDS ? process.env.SIMSEEDS.split(',').map(Number) : CAMPAIGN_SEEDS;
+  for (const [run, seed] of seeds.entries()) {
+    const g = makeGame(seed);
     const p = g.addPlayer({ name: 'Tester', token: 't' + run, isHost: true });
     for (const cls of ['lama', 'custode', 'arcanista', 'cacciatrice']) g.handle(p, { type: 'create_hero', name: cls, cls });
     g.handle(p, { type: 'start' });
@@ -139,7 +149,7 @@ test('campagna completa fino al finale (party forte)', () => {
     g.s.rations = 40; g.s.gold = 500;
     bot(g, p);
     const s = g.s;
-    if (process.env.SIMLOG) console.log(`run ${run}: fase ${s.phase}, atto ${s.act}, giorno ${s.day}, minaccia ${s.threat}`, s.ending?.title || s.gameover?.reason || '');
+    if (process.env.SIMLOG) console.log(`run ${run} (seme ${seeds[run]}): fase ${s.phase}, atto ${s.act}, giorno ${s.day}, minaccia ${s.threat}`, s.ending?.title || s.gameover?.reason || '');
     assert.ok(['ending', 'gameover'].includes(s.phase), `la partita non è terminata: ${s.phase} atto ${s.act}`);
     if (s.phase === 'ending') {
       endings++;
@@ -154,10 +164,10 @@ test('campagna completa fino al finale (party forte)', () => {
   assert.ok(endings >= 1, 'nessuna simulazione ha raggiunto un finale');
 });
 
-test('dadi del cammino: un eroe alla volta, annullabili', () => {
+test('viaggio: un eroe alla volta in ordine di velocità, ognuno con la sua pedina', () => {
   const g = makeGame();
   const p = g.addPlayer({ name: 'T', token: 'd', isHost: true });
-  for (const cls of ['lama', 'arcanista', 'custode']) g.handle(p, { type: 'create_hero', name: cls, cls });
+  for (const cls of ['lama', 'arcanista', 'ombra']) g.handle(p, { type: 'create_hero', name: cls, cls });
   g.handle(p, { type: 'start' });
   while (g.s.phase === 'event') {
     const e = g.s.event;
@@ -166,15 +176,33 @@ test('dadi del cammino: un eroe alla volta, annullabili', () => {
     else if (e.stage === 'rolled') g.handle(p, { type: 'accept_roll' });
     else g.handle(p, { type: 'event_continue' });
   }
+  const t = g.s.travel;
+  const spd = (id) => heroDerived(g.hero(id), g.s).spd;
+  for (let i = 1; i < t.order.length; i++) assert.ok(spd(t.order[i - 1]) >= spd(t.order[i]), 'ordine non per velocità');
+  const first = g.activeHero();
   g.handle(p, { type: 'travel_roll' });
-  const [a, b] = g.s.travel.pool;
-  assert.throws(() => g.handle(p, { type: 'travel_assign', heroId: b.heroId, face: 'passi' }), /turno/);
-  g.handle(p, { type: 'travel_assign', heroId: a.heroId, face: a.face });
-  assert.equal(a.assign, a.face);
-  assert.throws(() => g.handle(p, { type: 'travel_assign', heroId: a.heroId, face: 'passi' }), /annullalo/);
-  g.handle(p, { type: 'travel_unassign', heroId: a.heroId });
-  assert.equal(a.assign, null);
-  assert.throws(() => g.handle(p, { type: 'travel_assign', heroId: b.heroId, face: 'passi' }), /turno/);
+  assert.equal(t.die.heroId, first.id);
+  g.handle(p, { type: 'travel_assign', face: t.die.face });
+  assert.equal(t.die.assign, t.die.face);
+  g.handle(p, { type: 'travel_assign', face: t.die.face }); // riselezionare toglie la scelta e il +1
+  assert.equal(t.die.assign, null);
+  assert.throws(() => g.handle(p, { type: 'travel_confirm' }), /Scegli/);
+  g.handle(p, { type: 'travel_assign', face: 'passi' });
+  g.handle(p, { type: 'travel_confirm' });
+  assert.ok(t.steps >= 2);
+  const start = { ...first.pos };
+  const dest = Object.values(g.s.map.tiles).find((x) => x.rev && !x.poi && hexDist(x, start) === 1 && findPath(g.s.map, start, x, 1));
+  g.handle(p, { type: 'move', q: dest.q, r: dest.r });
+  assert.deepEqual(first.pos, { q: dest.q, r: dest.r });
+  const other = g.s.heroes.find((h) => h !== first);
+  assert.deepEqual(other.pos, start, 'gli altri eroi non si devono muovere');
+  if (g.s.phase === 'map') {
+    g.handle(p, { type: 'end_turn' });
+    assert.notEqual(g.activeHero().id, first.id);
+    const day = g.s.day;
+    while (g.s.phase === 'map' && g.s.day === day) g.handle(p, { type: 'end_turn' });
+    if (g.s.phase === 'map') assert.equal(g.s.travel.cur, 0);
+  }
 });
 
 test('modalità locale e aspetto personalizzato', () => {
@@ -200,4 +228,30 @@ test('tutorial completo fino alla fine', () => {
   assert.equal(g.s.phase, 'ending', `il tutorial non è finito: ${g.s.phase}`);
   assert.equal(g.s.ending.tutorial, true);
   assert.ok(g.s.flags.tut_rig, 'il primo tiro truccato non è avvenuto');
+});
+
+test('mosse d\'arma: schianto ad area, raffica e tiro a distanza', async () => {
+  const { startCombat } = await import('../server/combat.js');
+  const g = makeGame();
+  const p = g.addPlayer({ name: 'T', token: 'w', isHost: true });
+  g.handle(p, { type: 'create_hero', name: 'Bruto', cls: 'lama' });
+  g.handle(p, { type: 'start' });
+  g.s.event = null; g.s.vote = null; g.s.phase = 'map';
+  startCombat(g, ['lupo_bruma', 'lupo_bruma', 'lupo_bruma']);
+  const c = g.s.combat;
+  const hero = c.units.find((u) => u.side === 'hero');
+  for (const e of c.units.filter((u) => u.side === 'enemy')) { e.row = 0; e.eva = 0; e.hp = e.maxHp = 999; }
+  c.active = hero.id; hero.acted = false;
+  hero.wtype = 'mazza';
+  const t = c.units.find((u) => u.side === 'enemy');
+  g.handle(p, { type: 'combat', kind: 'attack', move: 'w_schianto', target: t.id });
+  assert.equal(c.last.name, 'Schianto');
+  assert.equal(new Set(c.last.results.filter((r) => r.dmg).map((r) => r.id)).size, 3, 'lo schianto deve colpire tutta la fila');
+  assert.equal(c.last.ranged, false);
+  hero.acted = false; c.active = hero.id; hero.wtype = 'arco';
+  g.handle(p, { type: 'combat', kind: 'attack', move: 'w_tiro', target: t.id });
+  assert.equal(c.last.ranged, true, 'l\'arco deve colpire a distanza');
+  hero.acted = false; c.active = hero.id;
+  g.handle(p, { type: 'combat', kind: 'attack', move: 'w_raffica' });
+  assert.equal(c.last.results.length, 3);
 });
