@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ceneri di Vael, scheda tecnica</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: colonna di lettura unica con indice laterale su desktop; tabelle e formule come "schede" di gioco */
+:root {
+  --bg: #f6f2ec;
+  --surface: #fffdf9;
+  --fg: #231c26;
+  --muted: #6c6170;
+  --line: #e2d9cf;
+  --accent: #b5561d;      /* fiamma di lanterna */
+  --ash: #6a5a8a;         /* cenere marea */
+  --code-bg: #efe8df;
+  --good: #2f7a4a;
+  --warn: #a05a00;
+  --f-display: "Cinzel", "Trajan Pro", Georgia, serif;
+  --f-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #17131b; --surface: #201a25; --fg: #ece4dc; --muted: #a497a6; --line: #352c3b;
+    --accent: #ffa65c; --ash: #b9a2ec; --code-bg: #2a2230; --good: #7ad49a; --warn: #f2b45a;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #17131b; --surface: #201a25; --fg: #ece4dc; --muted: #a497a6; --line: #352c3b;
+  --accent: #ffa65c; --ash: #b9a2ec; --code-bg: #2a2230; --good: #7ad49a; --warn: #f2b45a;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg);
+  font: 15.5px/1.65 var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 40px 80px;
+}
+.wrap { max-width: 1120px; margin: 0 auto; display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 48px; }
+nav.toc { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 24px); align-self: start; font-size: 13px; }
+nav.toc .lbl { font: 600 11px/1 var(--f-body); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-bottom: 12px; }
+nav.toc ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+nav.toc a { color: var(--muted); text-decoration: none; }
+nav.toc a:hover, nav.toc a:focus-visible { color: var(--accent); }
+main { min-width: 0; max-width: 760px; }
+header.top { display: grid; gap: 10px; padding-bottom: 28px; border-bottom: 1px solid var(--line); margin-bottom: 8px; }
+.eyebrow { font: 600 11px/1 var(--f-body); letter-spacing: .14em; text-transform: uppercase; color: var(--accent); }
+h1 { font: 800 clamp(30px, 5vw, 44px)/1.1 var(--f-display); margin: 0; letter-spacing: .01em; text-wrap: balance; }
+.lede { color: var(--muted); margin: 0; max-width: 62ch; font-size: 16.5px; }
+.facts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.chip { font: 500 12px/1 var(--f-mono); padding: 6px 9px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: var(--fg); }
+section { padding-top: 36px; scroll-margin-top: 24px; }
+h2 { font: 600 21px/1.25 var(--f-display); margin: 0 0 12px; letter-spacing: .02em; text-wrap: balance; display: flex; gap: 12px; align-items: baseline; }
+h2 .n { font: 600 12px/1 var(--f-mono); color: var(--accent); }
+h3 { font: 600 15px/1.3 var(--f-body); margin: 22px 0 8px; }
+p { margin: 0 0 12px; max-width: 68ch; }
+ul { margin: 0 0 12px; padding-left: 20px; max-width: 68ch; }
+li { margin-bottom: 4px; }
+code { font: 0.88em var(--f-mono); background: var(--code-bg); padding: 1px 5px; border-radius: 3px; overflow-wrap: anywhere; }
+.scroll { overflow-x: auto; margin: 6px 0 16px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font: 600 11px/1.2 var(--f-body); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); background: var(--code-bg); }
+tr:last-child td { border-bottom: 0; }
+td.num { font-variant-numeric: tabular-nums; font-family: var(--f-mono); text-align: right; white-space: nowrap; }
+td code { white-space: nowrap; }
+.formula { font: 13.5px/1.7 var(--f-mono); background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--ash); border-radius: 0 6px 6px 0; padding: 12px 16px; margin: 6px 0 16px; overflow-x: auto; white-space: pre; }
+.formula .c { color: var(--muted); }
+pre.mermaid { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 16px; overflow-x: auto; margin: 6px 0 16px; }
+.note { border: 1px solid var(--line); border-radius: 6px; padding: 12px 16px; background: var(--surface); margin: 8px 0 14px; max-width: 68ch; }
+.note b { color: var(--warn); }
+.note.ok b { color: var(--good); }
+.phases { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 14px; }
+.phases span { font: 500 12px/1 var(--f-mono); padding: 6px 8px; border-radius: 4px; border: 1px solid var(--line); background: var(--surface); }
+.phases span.k { border-color: var(--accent); color: var(--accent); }
+a { color: var(--accent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
+@media (max-width: 860px) {
+  .wrap { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  nav.toc { display: none; }
+}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+<nav class="toc" aria-label="Indice">
+  <div class="lbl">Indice</div>
+  <ol>
+    <li><a href="#stack">Stack e numeri</a></li>
+    <li><a href="#architettura">Architettura</a></li>
+    <li><a href="#rete">Avvio e rete</a></li>
+    <li><a href="#protocollo">Protocollo</a></li>
+    <li><a href="#stato">Stato e fasi</a></li>
+    <li><a href="#viaggio">Viaggio a giornate</a></li>
+    <li><a href="#prove">Prove e voti</a></li>
+    <li><a href="#combattimento">Combattimento</a></li>
+    <li><a href="#mappa">Mappa procedurale</a></li>
+    <li><a href="#eroi">Statistiche eroe</a></li>
+    <li><a href="#rendering">Rendering HD-2D</a></li>
+    <li><a href="#salvataggi">Salvataggi</a></li>
+    <li><a href="#contenuti">Contenuti</a></li>
+    <li><a href="#test">Test e note</a></li>
+  </ol>
+</nav>
+
+<main>
+<header class="top">
+  <div class="eyebrow">Scheda di funzionamento tecnico · v1.0.0</div>
+  <h1>Ceneri di Vael</h1>
+  <p class="lede">GdR cooperativo per 1–4 eroi e fino a 6 giocatori connessi, giocato nel browser. Un PC fa da host con un server Node autoritativo; gli altri entrano da un link, senza installare nulla.</p>
+  <div class="facts">
+    <span class="chip">Node.js ≥ 20</span>
+    <span class="chip">Express 5</span>
+    <span class="chip">Socket.IO 4.8</span>
+    <span class="chip">three.js 0.187</span>
+    <span class="chip">ES modules, nessun bundler</span>
+    <span class="chip">~6.000 righe JS</span>
+  </div>
+</header>
+
+<section id="stack">
+  <h2><span class="n">01</span>Stack e numeri</h2>
+  <p>Il progetto ha solo tre dipendenze di runtime (<code>express</code>, <code>socket.io</code>, <code>three</code>) più <code>localtunnel</code> come dipendenza opzionale. Non c'è nessun passo di build: il browser carica i moduli ES direttamente, e three.js viene servito da <code>node_modules</code> tramite una <em>import map</em>.</p>
+  <div class="scroll"><table>
+    <thead><tr><th>Cartella</th><th>Ruolo</th><th>File principali</th></tr></thead>
+    <tbody>
+      <tr><td><code>server/</code></td><td>Logica di gioco autoritativa, stanza, salvataggi, tunnel</td><td><code>index.js</code>, <code>game.js</code> (1.053 righe), <code>combat.js</code> (573), <code>mapgen.js</code>, <code>rng.js</code>, <code>save.js</code>, <code>tunnel.js</code></td></tr>
+      <tr><td><code>shared/</code></td><td>Regole pure e dati, importati sia dal server sia dal client</td><td><code>rules.js</code>, <code>data/*.js</code></td></tr>
+      <tr><td><code>client/</code></td><td>Interfaccia, rete e motore grafico</td><td><code>main.js</code>, <code>net.js</code>, <code>render/*</code>, <code>ui/*</code></td></tr>
+      <tr><td><code>tests/</code></td><td>Simulazioni headless di campagne complete</td><td><code>sim.test.js</code></td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="architettura">
+  <h2><span class="n">02</span>Architettura</h2>
+  <p>Il modello è <strong>client sottile, server autoritativo</strong>. I client mandano solo intenzioni (<code>action</code>); il server le valida, aggiorna lo stato con un RNG deterministico e ritrasmette a tutti lo stato completo. Nessun client calcola esiti, quindi tutti vedono sempre la stessa partita.</p>
+<pre class="mermaid">
+flowchart LR
+  subgraph Browser["Browser di ogni giocatore"]
+    UI["ui/* (lobby, HUD, pannelli, scheda, comandi)"]
+    R["render/* (Engine, WorldView, BattleView, dadi)"]
+    N["net.js (Socket.IO + token)"]
+  end
+  subgraph Host["PC host · Node.js"]
+    IDX["index.js (Express + Socket.IO, stanza)"]
+    G["game.js (stato, fasi, eventi, voti)"]
+    C["combat.js (turni, danni, IA)"]
+    M["mapgen.js (mappa esagonale)"]
+    S["save.js → saves/*.json"]
+    T["tunnel.js (cloudflared / localtunnel)"]
+  end
+  SH["shared/ (rules.js + data/)"]
+  UI --> N
+  N -- "action, hello, chat" --> IDX
+  IDX -- "state (completo)" --> N
+  N --> R
+  IDX --> G
+  G --> C
+  G --> M
+  G --> S
+  IDX --> T
+  SH -.-> G
+  SH -.-> UI
+</pre>
+  <p>Le formule in <code>shared/rules.js</code> (statistiche derivate, bonus alle prove, distanze esagonali) sono funzioni pure: il server le usa per decidere, il client le usa solo per mostrare anteprime come la probabilità di successo di una prova.</p>
+</section>
+
+<section id="rete">
+  <h2><span class="n">03</span>Avvio e rete</h2>
+  <ul>
+    <li><strong>Porta:</strong> 3000 di default (variabile <code>PORT</code>). Se è occupata il server prova le 10 successive.</li>
+    <li><strong>Chiave host:</strong> 12 caratteri esadecimali casuali a ogni avvio. Solo chi apre <code>/?host=CHIAVE</code> diventa host; il server apre da solo quel link nel browser (disattivabile con <code>--no-open</code>).</li>
+    <li><strong>Codice stanza:</strong> 4 lettere da un alfabeto di 24 (senza I e O, per evitare confusione con 1 e 0). Serve a chiunque non sia host e non abbia già un token valido.</li>
+    <li><strong>Capienza:</strong> massimo 6 giocatori connessi, massimo 4 eroi nel gruppo.</li>
+    <li><strong>LAN:</strong> il server elenca tutti gli indirizzi IPv4 non interni della macchina.</li>
+    <li><strong>Internet</strong> (<code>--tunnel</code>, cioè <code>avvia-online.bat</code>): prima tenta <code>cloudflared tunnel --url</code> e legge dall'output l'URL <code>*.trycloudflare.com</code> (timeout 30 s). Se fallisce ripiega su <code>localtunnel</code> e recupera la "password" di loca.lt, cioè l'IP pubblico dell'host.</li>
+  </ul>
+  <p>Lo stato del tunnel e i link sono esposti su <code>GET /api/invite</code>; la lobby lo interroga ogni 3 secondi finché il tunnel è in avvio.</p>
+</section>
+
+<section id="protocollo">
+  <h2><span class="n">04</span>Protocollo client–server</h2>
+  <div class="scroll"><table>
+    <thead><tr><th>Evento</th><th>Direzione</th><th>Contenuto e comportamento</th></tr></thead>
+    <tbody>
+      <tr><td><code>hello</code></td><td>client → server</td><td><code>{name, code, hostKey, token}</code>. Risponde con <code>playerId</code>, <code>token</code>, <code>isHost</code>. Il token resta in <code>sessionStorage</code> e permette di rientrare senza codice.</td></tr>
+      <tr><td><code>action</code></td><td>client → server</td><td><code>{type, ...}</code>, smistata da <code>Game.handle()</code> (circa 35 tipi: <code>travel_roll</code>, <code>move</code>, <code>vote</code>, <code>combat</code>, <code>buy</code>…). Gli errori di regola sono stringhe lanciate e tornano al client come <code>{ok:false, error}</code>. Il client usa un timeout di 8 s.</td></tr>
+      <tr><td><code>state</code></td><td>server → tutti</td><td><code>{players, game, code}</code> con lo stato intero, senza i token. Più modifiche nello stesso tick sono raggruppate in un solo invio con <code>setImmediate</code>.</td></tr>
+      <tr><td><code>saves</code> / <code>legends</code></td><td>client → server</td><td>Elenco dei salvataggi e delle Leggende su disco.</td></tr>
+      <tr><td><code>chat</code></td><td>client → server</td><td>Testo tagliato a 240 caratteri, scritto nel diario come voce di tipo <code>chat</code>.</td></tr>
+      <tr><td><code>ping_check</code></td><td>andata e ritorno</td><td>Ogni 3 s il client misura la latenza e la mostra nell'HUD.</td></tr>
+    </tbody>
+  </table></div>
+  <p><strong>Permessi:</strong> ogni giocatore comanda i propri eroi. L'host comanda anche quelli dei giocatori disconnessi e può forzare voti e conferme. Alla riconnessione con lo stesso nome, gli eroi tornano al loro proprietario.</p>
+</section>
+
+<section id="stato">
+  <h2><span class="n">05</span>Stato e fasi</h2>
+  <p>Tutta la partita vive in un unico oggetto <code>Game.s</code>, serializzabile in JSON. Il campo <code>phase</code> decide quale vista e quale pannello mostra il client:</p>
+  <div class="phases">
+    <span>lobby</span><span class="k">map</span><span>event</span><span>town</span><span>camp</span><span>combat</span><span>chapter</span><span>mythic</span><span>ending</span><span>gameover</span>
+  </div>
+<pre class="mermaid">
+stateDiagram-v2
+  [*] --> lobby
+  lobby --> map: start (nuova campagna)
+  map --> event: punto d'interesse / storia
+  map --> town: città o carovana
+  map --> camp: accampamento
+  map --> combat: incontro o agguato
+  event --> combat: esito combat o boss
+  event --> map
+  town --> map
+  camp --> map
+  combat --> map: vittoria
+  combat --> gameover: sconfitta
+  map --> chapter: fine atto
+  chapter --> mythic: dopo l'Atto I
+  chapter --> map: atto successivo
+  mythic --> map
+  chapter --> ending: dopo l'Atto III
+  map --> gameover: Cenere Marea 100%
+</pre>
+  <p>Campi principali: <code>act</code>, <code>day</code>, <code>threat</code> (Cenere Marea, 0–100), <code>fate</code> / <code>fateMax</code> (Scintille, partenza 3 su 5), <code>gold</code> (60), <code>rations</code> (8), <code>bag</code>, <code>heroes</code>, <code>map</code>, <code>party</code>, <code>travel</code>, <code>event</code>, <code>combat</code>, <code>vote</code>, <code>rep</code> (4 fazioni), <code>moral</code> (3 sentieri), <code>flags</code>, <code>chronicle</code>, <code>log</code> (ultime 120 voci).</p>
+</section>
+
+<section id="viaggio">
+  <h2><span class="n">06</span>Viaggio a giornate</h2>
+  <p>Ogni giornata è una piccola macchina a stati in <code>s.travel.stage</code>: <code>roll → assign → move</code>, poi <code>end_day</code>.</p>
+  <h3>Riserva del Cammino</h3>
+  <p>Ogni eroe vivo tira 1d6. Il giocatore assegna il dado a una delle quattro facce; se coincide con la specialità della classe vale +1 (massimo 7).</p>
+<div class="formula"><span class="c">// Cammino: passi = 1 + somma(STEP_TABLE[v])</span>
+STEP_TABLE = [0, 1, 1, 1, 2, 2, 2, 3]     <span class="c">// v = 1..7</span>
+Foraggio   v ≥ 5 → 3 razioni · v ≥ 3 → 2 · altrimenti 1
+Vedetta    somma dei valori; v ≥ 5 allarga la vista a raggio 3
+Ricerca    v ≥ 5 → oggetto · v ≥ 3 → (6..15) × atto oro · una volta per casella</div>
+  <h3>Movimento e incontri</h3>
+  <p>Il percorso è una BFS sulle sole caselle già rivelate. A ogni passo si rivela il raggio 2 (o 3) e si controllano i punti d'interesse. Sulle caselle pericolose senza punto d'interesse può scattare un'imboscata:</p>
+<div class="formula">p_incontro = max(2, (pericolo_bioma + threat/5 + [corrotta] 12) × 0.3 − vedetta × 1.2) / 100
+p_agguato_notturno = max(0, (pericolo + threat/4 + [corrotta] 10) × 0.6 − vedetta × 2) / 100</div>
+  <h3>Fine giornata</h3>
+  <ul>
+    <li>Ogni eroe consuma 1 razione; senza razioni perde il 15% dei PV (non scende sotto 1). Tutti recuperano il 10% dei PM.</li>
+    <li>La Cenere Marea sale di <code>threatRate(atto) + floor(giorno / 12)</code>. A 100 la partita è persa.</li>
+    <li>La corruzione si estende fino a coprire il <code>55% × threat</code> delle caselle percorribili. Avanza da est, con un peso che cresce con la colonna; sono protette le caselle entro 2 da un Faro acceso, le città, il boss e la casella del gruppo.</li>
+    <li>Ogni 5 giorni c'è un autosalvataggio.</li>
+  </ul>
+</section>
+
+<section id="prove">
+  <h2><span class="n">07</span>Prove, eventi e voti</h2>
+<div class="formula">bonus  = floor((stat − 10) / 2)
+       + 2  se la stat è una competenza della classe
+       + 2  per ogni tratto o trasformazione legati a quella stat
+       + floor((livello − 1) / 4)
+successo = d20 == 20  oppure  (d20 != 1  e  d20 + bonus ≥ CD)</div>
+  <p>Il client mostra la probabilità con <code>successChance()</code>, limitata tra 5% e 95%. Dopo un fallimento il gruppo può bruciare una Scintilla del Fato e ritirare il dado. L'animazione del d20 è un rendering three.js separato (<code>render/dice.js</code>), avviato quando arriva un <code>roll.id</code> nuovo.</p>
+  <p><strong>Voti:</strong> eventi, accampamenti e scelta del Sentiero Mitico si decidono a maggioranza tra i giocatori connessi. Il voto si chiude quando tutti hanno votato. In caso di pareggio vince l'opzione dell'host se è tra quelle in parità, altrimenti la prima. L'host può forzare la chiusura.</p>
+  <p>Gli esiti degli eventi sono liste di effetti dichiarativi (<code>fx</code>) applicate da <code>applyFx()</code>: <code>gold</code>, <code>hp</code>, <code>xp</code>, <code>threat</code>, <code>rep</code>, <code>moral</code>, <code>flag</code>, <code>combat</code>, <code>boss</code>, <code>beacon</code>, <code>bond</code>, <code>transform</code> e altri. Oro e XP sono moltiplicati per l'atto corrente.</p>
+</section>
+
+<section id="combattimento">
+  <h2><span class="n">08</span>Combattimento</h2>
+  <p>Battaglia laterale a turni con due file per lato (0 avanti, 1 dietro). Gli attacchi in mischia non raggiungono la fila dietro finché quella avanti ha qualcuno in vita. Il flusso è guidato da timer sul server: i nemici agiscono dopo 1,15 s e il turno avanza dopo 0,95 s, così tutti i client vedono le animazioni allo stesso ritmo.</p>
+  <h3>Iniziativa</h3>
+<div class="formula">ordine = velocità × (Rapido 1.5) × (Lento 0.6) + rnd(0..5)   <span class="c">// +50 ai nemici nel 1° round di un agguato</span></div>
+  <h3>Danno</h3>
+<div class="formula">grezzo = (ATT o MAG) × potenza × (0.9..1.1)
+danno  = grezzo × 40 / (40 + DIF o DIFM)
+  × 1.5 debolezza · × 0.5 resistenza · × 1.3 Vigore · × 0.7 Debolezza
+  × 1.25 Marchiato · × 0.6 Protetto/Egida · × 0.5 in difesa · × 1.5 Spezzato
+  × 2 Fulmine su Bagnato · × 0.5 Fuoco su Bagnato · × 2 Botta su Congelato
+  × 1.8 Alle spalle · × 2.5 Esecuzione (PV &lt; 35%) · × 0.6 mischia dalla fila dietro
+  × 1.6 critico (5% + Fortuna/3 + 15% se Marchiato)
+  × moltiplicatore Slancio [1, 1.5, 2, 2.5]</div>
+  <h3>Guardia e Spezzato</h3>
+  <p>Ogni nemico ha un valore di Guardia. Un colpo sulla sua debolezza toglie 1 punto, e alcune abilità ne tolgono di più (campo <code>guard</code>). A zero il nemico è <em>Spezzato</em>: salta 1 o 2 turni, subisce danni ×1,5, poi la Guardia torna piena.</p>
+  <h3>Scala dei nemici</h3>
+<div class="formula">PV  = base × (boss ? 0.45 + 0.2·n : 0.6 + 0.14·n)   <span class="c">// n = eroi vivi</span>
+ATT/MAG = base × (1 + threat / 250)
+numero nemici = clamp(1..5, round(0.8·n + rnd(0..2) + [threat > 60]))</div>
+  <h3>IA nemica</h3>
+  <ul>
+    <li><code>healer</code>: cura l'alleato più ferito sotto il 50% dei PV.</li>
+    <li><code>caster</code>: usa un'abilità nel 70% dei casi.</li>
+    <li><code>boss</code>: evoca servitori se ha meno di 3 alleati, altrimenti abilità all'80%. Ha più fasi (<code>checkBossPhase</code>).</li>
+    <li>Base: abilità nel 45% dei casi.</li>
+    <li>Bersaglio: chi ha Provocazione, altrimenti la fila avanti per la mischia, con un peso che preferisce gli eroi più feriti.</li>
+  </ul>
+  <p>Gli stati alterati sono 19 (danni nel tempo, controllo, buff e debuff). Il danno nel tempo sui boss è ridotto al 40%.</p>
+</section>
+
+<section id="mappa">
+  <h2><span class="n">09</span>Mappa procedurale</h2>
+  <ul>
+    <li>Griglia esagonale <strong>22 × 13</strong> in coordinate assiali <code>(q, r)</code>, con <code>q = x − floor(y/2)</code>. Le chiavi sono stringhe <code>"q,r"</code>.</li>
+    <li>Due livelli di <em>value noise</em> per l'altitudine e uno per l'umidità. Il bioma dipende dall'atto: prati e boschi nell'Atto I, paludi nel II, cenere e rovine nel III.</li>
+    <li>Partenza nella colonna 1 e boss nella colonna 20. Un cammino casuale verso il boss "scava" le caselle bloccate e garantisce che il boss sia raggiungibile.</li>
+    <li>Una BFS calcola le caselle raggiungibili; i punti d'interesse vengono messi solo lì, a distanza minima 2–3 tra loro: città, nodi della storia (posizionati per frazione di larghezza), fari, cristalli, accampamenti, santuari, covi, una carovana ed eventi scelti in base al bioma.</li>
+    <li>Nebbia di guerra a due livelli: <code>rev</code> (rivelata) e <code>vis</code> (visitata). <code>map.v</code> è un contatore di versione che il client usa per ricostruire il diorama solo quando serve.</li>
+  </ul>
+</section>
+
+<section id="eroi">
+  <h2><span class="n">10</span>Statistiche dell'eroe</h2>
+  <p>Sette statistiche: FOR, VIG, INT, SPI, DES, RAP, FRT. Livello massimo 12; esperienza per il livello successivo <code>50·L + 25·L²</code>.</p>
+<div class="formula">stat  = base_classe + crescita × (liv − 1) + bonus permanenti
+        + sottoclasse + equipaggiamento (6 slot) + talenti + tratti + trasformazioni
+        + 1 a tutto se Leggenda + bonus del Sentiero Mitico
+PV    = (pv_classe + pvG × (liv−1) + 2·VIG + bonus) × (1 + %PV)
+PM    = pm_classe + pmG × (liv−1) + SPI + INT/2 + bonus
+ATT   = 1.5 × (DES con pugnale o arco, altrimenti FOR)
+MAG   = 1.5 × max(INT, SPI)        CURA = 1.6 × SPI + 0.5 × bonus MAG
+DIF   = 0.6 × VIG × (1 + %DIF)     DIFM = 0.6 × SPI
+CRIT  = 5 + FRT/3                  SCHIVATA = RAP/4</div>
+  <div class="scroll"><table>
+    <thead><tr><th>Classe</th><th>Ruolo</th><th>Specialità di viaggio</th><th>Elemento base</th></tr></thead>
+    <tbody>
+      <tr><td>Lama Giurata</td><td>Avanguardia</td><td>Vedetta</td><td>Taglio</td></tr>
+      <tr><td>Ombrasca</td><td>Lama nell'ombra</td><td>Ricerca</td><td>Punta</td></tr>
+      <tr><td>Arcanista Vitrea</td><td>Magia elementale</td><td>Cammino</td><td>Botta</td></tr>
+      <tr><td>Custode della Lanterna</td><td>Guaritore</td><td>Foraggio</td><td>Luce</td></tr>
+      <tr><td>Cantore di Cenere</td><td>Supporto</td><td>Cammino</td><td>Botta</td></tr>
+      <tr><td>Cacciatrice di Bruma</td><td>Tiratrice</td><td>Foraggio</td><td>Punta</td></tr>
+    </tbody>
+  </table></div>
+  <p>Le abilità disponibili si sommano: classe (per livello), sottoclasse (dal livello 3), le prime due abilità del mestiere secondario (sbloccato dai Cristalli) e quelle date dai talenti.</p>
+</section>
+
+<section id="rendering">
+  <h2><span class="n">11</span>Rendering HD-2D</h2>
+  <p>Un solo <code>WebGLRenderer</code> condiviso tra due viste: <code>WorldView</code> (diorama della mappa) e <code>BattleView</code> (scena di battaglia). <code>Engine.setView()</code> cambia scena, camera e parametri di post-processing.</p>
+<div class="formula">RenderPass → UnrealBloom (0.42, soglia 0.86) → TiltShift orizzontale → TiltShift verticale
+           → Grade (split toning freddo/caldo, contrasto, vignetta, grana, flash) → OutputPass
+Tone mapping ACES Filmic · esposizione 1.05 · ombre PCF morbide 2048² · pixel ratio ≤ 1.5</div>
+  <ul>
+    <li><strong>Pixel art procedurale:</strong> nessun file immagine. <code>pixel.js</code> disegna su canvas eroi, nemici, decorazioni, icone e texture delle caselle. Le texture usano <code>NearestFilter</code> e sono applicate a piani verticali ancorati ai piedi (<code>PixelSprite</code>), con ombra a disco e ombre proiettate tramite <code>alphaTest</code>.</li>
+    <li><strong>Diorama:</strong> camera prospettica a 32°, luce emisferica, sole direzionale caldo, 8 luci puntiformi riusate per lanterne, fuochi e fari, un piano di nebbia sotto la mappa e 500 particelle di cenere che cadono.</li>
+    <li><strong>Qualità:</strong> "alta" o "bassa" (salvata in <code>localStorage</code>). La bassa toglie bloom e ombre e fissa il pixel ratio a 1.</li>
+    <li><strong>Interfaccia:</strong> HTML e CSS sovrapposti al canvas e ridisegnati a ogni <code>state</code>, conservando focus e scroll dei pannelli.</li>
+  </ul>
+</section>
+
+<section id="salvataggi">
+  <h2><span class="n">12</span>Salvataggi</h2>
+  <ul>
+    <li>File JSON in <code>saves/</code> (esclusa da git) con <code>{meta, state}</code>. Il nome è ripulito dai caratteri non validi e tagliato a 40 caratteri; in lettura si usa solo <code>basename</code> per evitare di uscire dalla cartella.</li>
+    <li>Nel file viene salvato anche il seme interno dell'RNG, quindi il caricamento riprende la stessa sequenza di tiri.</li>
+    <li>Un combattimento non viene salvato: la partita riparte dalla mappa.</li>
+    <li>Autosalvataggio (<code>autosalvataggio.json</code>) alla locanda, ogni 5 giorni e a ogni capitolo.</li>
+    <li>Le Leggende sono gli eroi sopravvissuti a una campagna. Restano in <code>saves/legends.json</code> (ultime 40) e si possono richiamare in campagne nuove.</li>
+  </ul>
+</section>
+
+<section id="contenuti">
+  <h2><span class="n">13</span>Contenuti</h2>
+  <p>Tutti i contenuti sono dati in <code>shared/data/</code>: aggiungere un nemico, un oggetto o un evento non richiede di toccare la logica.</p>
+  <div class="scroll"><table>
+    <thead><tr><th>Elemento</th><th>File</th><th style="text-align:right">Quantità</th></tr></thead>
+    <tbody>
+      <tr><td>Classi (ciascuna con sottoclassi)</td><td><code>classes.js</code></td><td class="num">6</td></tr>
+      <tr><td>Abilità</td><td><code>classes.js</code></td><td class="num">75</td></tr>
+      <tr><td>Nemici (di cui boss)</td><td><code>enemies.js</code></td><td class="num">21 (5)</td></tr>
+      <tr><td>Eventi casuali</td><td><code>events.js</code></td><td class="num">26</td></tr>
+      <tr><td>Eventi di storia</td><td><code>story.js</code></td><td class="num">12</td></tr>
+      <tr><td>Scene d'accampamento</td><td><code>events.js</code></td><td class="num">6</td></tr>
+      <tr><td>Oggetti / affissi</td><td><code>items.js</code></td><td class="num">58 / 12</td></tr>
+      <tr><td>Talenti / tratti / trasformazioni</td><td><code>heroes.js</code></td><td class="num">20 / 14 / 7</td></tr>
+      <tr><td>Biomi</td><td><code>mythic.js</code></td><td class="num">9</td></tr>
+      <tr><td>Fazioni</td><td><code>mythic.js</code></td><td class="num">4</td></tr>
+      <tr><td>Atti / Sentieri Mitici</td><td><code>story.js</code>, <code>mythic.js</code></td><td class="num">3 / 3</td></tr>
+      <tr><td>Elementi / stati alterati</td><td><code>rules.js</code></td><td class="num">8 / 19</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="test">
+  <h2><span class="n">14</span>Test e note</h2>
+  <p>La suite crea un <code>Game</code> senza rete, sostituisce i timer con una coda svuotata a mano e fa giocare un bot.</p>
+  <div class="scroll"><table>
+    <thead><tr><th>Test</th><th>Cosa verifica</th></tr></thead>
+    <tbody>
+      <tr><td>rng deterministico</td><td>Lo stesso seme produce la stessa sequenza</td></tr>
+      <tr><td>formule delle prove</td><td><code>successChance</code> e <code>checkBonus</code></td></tr>
+      <tr><td>mappe: il boss è sempre raggiungibile</td><td>Su molti semi, per tutti e 3 gli atti</td></tr>
+      <tr><td>campagna completa fino al finale</td><td>Un bot gioca i 3 atti senza errori fino al finale</td></tr>
+    </tbody>
+  </table></div>
+  <div class="note ok"><b>Verificato il 18/11/2026:</b> <code>npm test</code> passa 4 test su 4 in circa 0,3 s con Node 24.21. Lo script è <code>node --test</code> senza argomenti: Node trova da solo i file <code>*.test.js</code> e funziona sia con Node 20 sia con le versioni più recenti.</div>
+  <h3>Limiti da conoscere</h3>
+  <ul>
+    <li>A ogni modifica viene inviato lo stato intero, senza differenze. Va bene per 6 giocatori, ma il traffico cresce con mappa e diario.</li>
+    <li>L'accesso è protetto solo dal codice di 4 lettere, che cambia a ogni avvio insieme al link pubblico.</li>
+    <li>Con localtunnel la "password" condivisa con gli amici è l'IP pubblico dell'host.</li>
+    <li>La partita vive in memoria sul PC host: se il server si chiude, si riparte dall'ultimo salvataggio.</li>
+  </ul>
+</section>
+
+<footer>Ricavata dal codice del repository <code>ottaarchitetti-alt/Vael</code>, commit <code>a294268</code>.</footer>
+</main>
+</div>
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.esm.min.mjs';
+  const dark = matchMedia('(prefers-color-scheme: dark)').matches;
+  mermaid.initialize({ startOnLoad: true, theme: dark ? 'dark' : 'neutral' });
+</script>
+</body>
+</html>

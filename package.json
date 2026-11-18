@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server/index.js",
     "host": "node server/index.js --tunnel",
-    "test": "node --test tests/"
+    "test": "node --test"
   },
   "dependencies": {
     "express": "^5.3.0",
