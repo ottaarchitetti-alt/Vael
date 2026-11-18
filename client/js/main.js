@@ -8,6 +8,7 @@ import { SKILLS } from '/shared/data/classes.js';
 import { ITEMS } from '/shared/data/items.js';
 import { BIOMES } from '/shared/data/mythic.js';
 import { hkey } from '/shared/rules.js';
+import { LOOK, HAIR_STYLES, BEARDS, ACCESSORIES } from '/shared/data/heroes.js';
 import { renderLobby } from './ui/lobby.js';
 import { renderQuests } from './ui/quests.js';
 import { renderTop, renderParty, renderLogList, renderTravel, renderMenu, tileTooltip } from './ui/hud.js';
@@ -15,6 +16,8 @@ import { renderEvent, renderTown, renderCamp, renderChapter, renderMythic, rende
 import { renderSheet } from './ui/sheet.js';
 import { renderCombat, validTargets } from './ui/combatui.js';
 import { esc, toast } from './ui/util.js';
+import { renderTitle } from './ui/menu.js';
+import { renderCoach } from './ui/coach.js';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -41,10 +44,12 @@ const app = {
   },
 };
 window.vael = app; // utile per il debug
+try { app.ui.tutSeen = new Set(JSON.parse(sessionStorage.getItem('vael_tut') || '[]')); } catch { app.ui.tutSeen = new Set(); }
 
 // ------------------ ingresso ------------------
 function joinScreen(err) {
   $('loading').style.display = 'none';
+  if (params.get('host') && !err) { app.ui.screen = 'menu'; $('center').innerHTML = renderTitle(app); return; }
   const name = localStorage.getItem('vael_name') || '';
   const needCode = !params.get('host') && !params.get('code') && !sessionStorage.getItem('vael_token');
   $('center').innerHTML = `<div class="join">
@@ -127,12 +132,22 @@ function render() {
   const s = app.state;
   if (!s || !app.me) return;
   document.body.dataset.phase = s.phase;
+  if (app.ui.screen === 'menu' && app.me.isHost) {
+    document.body.dataset.phase = 'lobby';
+    useView(world);
+    world.sync(demoState([]), new Set());
+    for (const id of ['hud', 'party', 'quests', 'bottom', 'combatui', 'modal', 'coach']) $(id).innerHTML = '';
+    $('modal').classList.remove('on');
+    $('logpanel').style.display = 'none';
+    keepFocus(() => { $('center').innerHTML = renderTitle(app); });
+    return;
+  }
   if (s.phase === 'lobby') {
     useView(world);
     const demo = demoState(s.heroes);
     world.sync(demo, new Set());
     world.follow = true;
-    for (const id of ['hud', 'party', 'quests', 'bottom', 'combatui', 'modal']) $(id).innerHTML = '';
+    for (const id of ['hud', 'party', 'quests', 'bottom', 'combatui', 'modal', 'coach']) $(id).innerHTML = '';
     $('logpanel').style.display = 'none';
     if (app.ui.modal) app.ui.modal = null;
     keepFocus(() => { $('center').innerHTML = renderLobby(app); });
@@ -143,6 +158,7 @@ function render() {
   $('hud').innerHTML = renderTop(app);
   $('party').innerHTML = renderParty(app);
   $('quests').innerHTML = s.phase === 'combat' ? '' : renderQuests(app);
+  $('coach').innerHTML = app.ui.modal ? '' : renderCoach(app);
   updateLog();
   $('bottom').innerHTML = s.phase === 'map' && !app.ui.modal ? renderTravel(app) : '';
   // vista 3D
@@ -242,10 +258,55 @@ function combatSend(a) {
 }
 
 // ------------------ azioni UI ------------------
+async function ensureHello() {
+  const nm = ($('joinName')?.value || '').trim() || 'Viandante';
+  try { localStorage.setItem('vael_name', nm); sessionStorage.setItem('vael_name', nm); } catch {}
+  if (app.me) return true;
+  const r = await net.hello({ name: nm, code: '', hostKey: params.get('host'), token: sessionStorage.getItem('vael_token') });
+  if (!r.ok) { toast(r.error, 'bad'); return false; }
+  app.me = r;
+  loadInvite();
+  net.call('legends').then((x) => { app.ui.legends = x?.legends || []; render(); });
+  return true;
+}
+
 const A = {
+  choose_mode: async (d) => {
+    if (!(await ensureHello())) return;
+    const ph = app.state?.phase;
+    if (ph && !['lobby', 'ending', 'gameover'].includes(ph)) {
+      if (!confirm("C'è una partita in corso: chiuderla? (I progressi non salvati andranno persi.)")) return;
+      await app.send({ type: 'to_lobby' });
+    }
+    if (d.mode === 'tutorial') {
+      app.ui.tutSeen = new Set(); app.ui.tutOpen = null; app.ui.coachMin = false;
+      try { sessionStorage.removeItem('vael_tut'); } catch {}
+      const r = await app.send({ type: 'start_tutorial' });
+      if (!r?.ok) return;
+    } else {
+      if (ph === 'ending' || ph === 'gameover') await app.send({ type: 'to_lobby' });
+      const r = await app.send({ type: 'set_mode', mode: d.mode });
+      if (!r?.ok) return;
+    }
+    app.ui.screen = null;
+    render();
+  },
+  menu_resume: () => { app.ui.screen = null; render(); },
+  to_menu: () => { app.ui.screen = 'menu'; app.ui.modal = null; render(); },
+  tut_exit: () => app.send({ type: 'to_lobby' }).then(() => { app.ui.screen = 'menu'; render(); }),
+  coach_ok: (d) => { (app.ui.tutSeen ||= new Set()).add(d.id); app.ui.tutOpen = null; try { sessionStorage.setItem('vael_tut', JSON.stringify([...app.ui.tutSeen])); } catch {} render(); },
+  coach_open: (d) => { app.ui.tutOpen = d.id; app.ui.coachMin = false; render(); },
+  coach_min: () => { app.ui.coachMin = !app.ui.coachMin; render(); },
   copy: (d) => { navigator.clipboard?.writeText(d.text).then(() => toast('Copiato!', 'good'), () => toast(d.text)); },
   draft: (d) => { app.ui.draft[d.k] = d.v; render(); },
-  create_hero: () => { const dr = app.ui.draft; app.send({ type: 'create_hero', name: dr.name, cls: dr.cls, skin: dr.skin, hair: dr.hair }).then((r) => { if (r?.ok) app.ui.draft.name = ['Aldric', 'Mirela', 'Tobin', 'Seraphine', 'Caius', 'Ilse', 'Doran', 'Vesna', 'Liora', 'Bram', 'Nerys'][Math.floor(Math.random() * 11)]; }); },
+  look: (d) => { app.ui.draft.look[d.k] = d.v; render(); },
+  preview_anim: (d) => { app.ui.previewAnim = d.a; render(); },
+  look_random: () => {
+    const pick = (a) => a[Math.floor(Math.random() * a.length)];
+    app.ui.draft.look = { skin: pick(LOOK.skin), hair: pick(LOOK.hair), eyes: pick(LOOK.eyes), hairStyle: pick(Object.keys(HAIR_STYLES)), beard: Math.random() < 0.6 ? 'nessuna' : pick(Object.keys(BEARDS)), acc: Math.random() < 0.5 ? 'classe' : pick(Object.keys(ACCESSORIES)), cloth: Math.random() < 0.5 ? '' : pick(LOOK.cloth) };
+    render();
+  },
+  create_hero: () => { const dr = app.ui.draft; app.send({ type: 'create_hero', name: dr.name, cls: dr.cls, look: dr.look }).then((r) => { if (r?.ok) app.ui.draft.name = ['Aldric', 'Mirela', 'Tobin', 'Seraphine', 'Caius', 'Ilse', 'Doran', 'Vesna', 'Liora', 'Bram', 'Nerys'][Math.floor(Math.random() * 11)]; }); },
   legend: (d) => app.send({ type: 'create_hero', legend: d.id, cls: 'lama' }),
   reroll_traits: (d) => app.send({ type: 'reroll_traits', heroId: d.hero }),
   delete_hero: (d) => app.send({ type: 'delete_hero', heroId: d.hero }),
@@ -270,6 +331,7 @@ const A = {
   set_row: (d) => app.send({ type: 'set_row', heroId: d.hero, row: Number(d.row) }),
   travel_roll: () => app.send({ type: 'travel_roll' }),
   travel_assign: (d) => app.send({ type: 'travel_assign', heroId: d.hero, face: d.face }),
+  travel_unassign: (d) => app.send({ type: 'travel_unassign', heroId: d.hero }),
   travel_confirm: () => app.send({ type: 'travel_confirm' }),
   end_day: () => app.send({ type: 'end_day' }),
   vote: (d) => app.send({ type: 'vote', idx: Number(d.idx) }),

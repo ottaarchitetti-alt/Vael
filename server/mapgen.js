@@ -2,6 +2,7 @@
 import { BIOMES } from '../shared/data/mythic.js';
 import { EVENTS } from '../shared/data/events.js';
 import { STORY } from '../shared/data/story.js';
+import { TUTORIAL_MAP } from '../shared/data/tutorial.js';
 import { hkey, neighbors, hexDist } from '../shared/rules.js';
 
 export const MAP_W = 22;
@@ -123,6 +124,29 @@ export function generateMap(rng, act) {
     place(t, { t: 'event', id });
   }
   return { tiles, w: MAP_W, h: MAP_H, start: { q: start.q, r: start.r }, boss: { q: bossT.q, r: bossT.r }, v: 1 };
+}
+
+// Mappa fissa del tutorial (vedi shared/data/tutorial.js)
+export function generateTutorialMap(rng) {
+  const { w, h, pois } = TUTORIAL_MAP;
+  const choke = new Set();
+  for (const col of Object.keys(pois).map(Number)) if (col > 1) { choke.add(col - 1); choke.add(col); }
+  const tiles = {};
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let b;
+      if (y === 0 || y === h - 1) b = x % 3 === 0 ? 'monti' : 'acqua';
+      else if (y === 2) b = x === w - 1 ? 'monti' : 'prato';
+      else b = x === 0 || x === w - 1 || choke.has(x) ? 'monti' : (x + y) % 3 === 0 ? 'colline' : 'bosco';
+      const q = x - Math.floor(y / 2), r = y;
+      const bd = BIOMES[b];
+      tiles[hkey(q, r)] = { q, r, x, y, b, h: +(bd.h[0] + (bd.h[1] - bd.h[0]) * rng.next()).toFixed(2), poi: null, cor: false, rev: false, vis: false, dec: rng.int(0, 9999) };
+    }
+  }
+  const at = (x, y) => tiles[hkey(x - Math.floor(y / 2), y)];
+  for (const [col, poi] of Object.entries(pois)) at(Number(col), 2).poi = { ...poi };
+  const start = at(1, 2), boss = at(14, 2);
+  return { tiles, w, h, start: { q: start.q, r: start.r }, boss: { q: boss.q, r: boss.r }, v: 1 };
 }
 
 export function reveal(map, q, r, radius) {

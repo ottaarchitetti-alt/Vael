@@ -1,6 +1,6 @@
 // Scena di battaglia laterale HD-2D
 import { THREE, PixelSprite, texFromCanvas } from './engine.js';
-import { heroSheet, enemySheet, HERO_W, HERO_H, decor, tileTexture, canvas, shade, glowTexture } from './pixel.js';
+import { heroSheet, enemySheet, HERO_W, HERO_H, HERO_FRAMES, HERO_ANIM, decor, tileTexture, canvas, shade, glowTexture } from './pixel.js';
 import { BIOMES, ACTS } from '/shared/data/mythic.js';
 import { ENEMIES } from '/shared/data/enemies.js';
 import { ELEMENTS, STATUSES } from '/shared/rules.js';
@@ -47,6 +47,8 @@ export class BattleView {
     s.add(new THREE.AmbientLight('#4a3a5a', 0.7));
     this.fxLight = new THREE.PointLight('#ffffff', 0, 12, 1.5); this.fxLight.position.set(0, 2, 1); s.add(this.fxLight);
     this.heroLight = new THREE.PointLight('#ffd8a0', 3, 9, 1.4); this.heroLight.position.set(4, 3, 3); s.add(this.heroLight);
+    // luce di riempimento dal lato della camera: gli sprite guardano la camera e altrimenti restano in ombra
+    this.fill = new THREE.DirectionalLight('#ffe8d0', 1.1); this.fill.position.set(15, 7, 12); s.add(this.fill);
     this.env = new THREE.Group(); s.add(this.env);
     // anello del turno attivo
     const rg = new THREE.RingGeometry(0.55, 0.72, 32); rg.rotateX(-Math.PI / 2);
@@ -146,7 +148,7 @@ export class BattleView {
       e.u = u;
       e.home = this.unitPos(u);
       if (!u.alive && !e.dead) { e.dead = true; e.deathT = 0; }
-      if (u.alive && e.dead) { e.dead = false; e.sp.mat.opacity = 1; e.sp.mat.transparent = false; e.sp.visible = true; }
+      if (u.alive && e.dead) { e.dead = false; e.sp.mat.opacity = 1; e.sp.mat.transparent = false; e.sp.visible = true; e.hop = 0.5; }
     }
     if (c.last && c.last.seq !== this.lastSeq) { this.lastSeq = c.last.seq; this.playAction(c.last, state); }
     this.activeId = c.active;
@@ -166,7 +168,7 @@ export class BattleView {
     let sp;
     if (u.side === 'hero') {
       const h = state.heroes.find((x) => x.id === u.heroId);
-      sp = new PixelSprite(heroSheet(h), HERO_W, HERO_H, 4, PX * 1.05, { shadow: true });
+      sp = new PixelSprite(heroSheet(h), HERO_W, HERO_H, HERO_FRAMES, PX * 1.05, { shadow: true });
     } else {
       const s = enemySheet(u.enemyId);
       sp = new PixelSprite(s.canvas, s.w, s.h, 4, PX * (ENEMIES[u.enemyId].size > 1.5 ? 1.1 : 1), { shadow: true, emissive: '#000000' });
@@ -178,8 +180,8 @@ export class BattleView {
     const label = document.createElement('div');
     label.className = 'unit-label ' + u.side + (u.boss ? ' boss' : '');
     this.overlay.appendChild(label);
-    const e = { u, sp, home: pos, label, phase: Math.random() * 6, offset: new THREE.Vector3(), hitT: 0, atkT: 0, dead: !u.alive, deathT: 1 };
-    if (!u.alive) sp.visible = false;
+    const e = { u, sp, home: pos, label, phase: Math.random() * 6, offset: new THREE.Vector3(), hitT: 0, atkT: 0, dead: !u.alive, deathT: 1, isHero: u.side === 'hero', anim: null, knock: 0, sqx: 1, sqy: 1, hop: 0 };
+    if (!u.alive && u.side !== 'hero') sp.visible = false;
     sp.mesh.userData.unitId = u.id;
     this.units.set(u.id, e);
     return e;
@@ -225,6 +227,13 @@ export class BattleView {
     if (last.skip) { this.popup(last.actor, last.name, 'status'); return; }
     if (actor) {
       actor.atkT = 0.6;
+      if (actor.isHero) {
+        const melee = last.kind === 'phys' && !last.concert && !last.summon;
+        if (melee) actor.anim = { frames: HERO_ANIM.attack, t: 0, dur: 0.55, delay: 0.22, strike: true };
+        else if (last.name === 'Difesa') actor.anim = { frames: HERO_ANIM.guard, t: 0, dur: 0.9 };
+        else if (last.kind || last.charge || last.summon || last.concert) { actor.anim = { frames: HERO_ANIM.cast, t: 0, dur: 0.8 }; actor.hop = 0.35; actor.sqy = 1.12; actor.sqx = 0.92; }
+        else actor.anim = { frames: HERO_ANIM.walk, t: 0, dur: 0.5 };
+      } else { actor.sqx = 1.12; actor.sqy = 0.9; }
       const tgt = last.results.find((r) => r.id !== last.actor && r.dmg != null);
       const offensive = last.kind === 'phys' || last.kind === 'mag';
       if (tgt && last.kind === 'phys' && !last.concert && !last.summon) {
@@ -248,12 +257,16 @@ export class BattleView {
         const p = te.sp.position.clone().add(new THREE.Vector3(0, te.sp.h * 0.45, 0));
         if (r.dmg != null) {
           te.hitT = 0.4;
+          te.knock = te.isHero ? 0.45 : -0.45;
+          te.sqx = 0.86; te.sqy = 1.1;
+          if (te.isHero) te.anim = null;
           this.burst(p, ELCOL[r.el] || '#ffffff', r.crit ? 40 : 22, 1.1);
           this.fxLight.position.copy(p).add(new THREE.Vector3(0, 0.5, 1));
           this.fxLight.color.set(ELCOL[r.el] || '#ffffff'); this.fxLight.intensity = 14;
           if (r.crit || r.broke) this.shake = 0.25;
         }
-        if (r.revived || r.summoned) this.burst(p, '#fff2b0', 30, 0.5, 1.5);
+        if (r.revived || r.summoned) { this.burst(p, '#fff2b0', 30, 0.5, 1.5); te.hop = 0.5; }
+        if (r.heal && !r.revived) te.hop = Math.max(te.hop, 0.2);
       }, delay);
       if (r.miss) this.popup(r.id, 'Mancato', 'miss', delay);
       if (r.dmg != null) this.popup(r.id, String(r.dmg), 'dmg' + (r.crit ? ' crit' : '') + (r.weak ? ' weak' : '') + (r.resist ? ' resist' : ''), delay);
@@ -295,26 +308,63 @@ export class BattleView {
     this.fxLight.intensity = Math.max(0, this.fxLight.intensity - dt * 30);
     for (const e of this.units.values()) {
       const sp = e.sp, u = e.u;
-      // ritorno a casa / entrata
+      // ritorno a casa / entrata, con contraccolpo quando viene colpito
       let goal = e.home.clone();
+      e.knock *= Math.max(0, 1 - dt * 7);
+      goal.x += e.knock;
       if (e.lunge) {
         e.lunge.t += dt * 2.2;
         const k = e.lunge.t < 0.5 ? e.lunge.t * 2 : Math.max(0, 2 - e.lunge.t * 2);
-        goal = e.home.clone().lerp(e.lunge.to, k);
+        goal = e.home.clone().lerp(e.lunge.to, k * k * (3 - 2 * k));
         sp.position.copy(goal);
         if (e.lunge.t >= 1) e.lunge = null;
-      } else sp.position.lerp(goal, Math.min(1, dt * 5));
-      // fotogrammi
-      let frame = Math.floor(t * 2.2 + e.phase) % 2;
-      if (e.atkT > 0) { e.atkT -= dt; frame = 2; }
-      if (e.hitT > 0) { e.hitT -= dt; frame = 3; sp.mesh.position.x = Math.sin(t * 80) * 0.06; } else sp.mesh.position.x = 0;
-      if (u.broken > 0 || u.statuses?.stun || u.statuses?.sleep || u.statuses?.frozen) frame = 3 === frame ? 3 : 0;
+      } else sp.position.lerp(goal, Math.min(1, dt * 8));
+      // schiacciamento / allungamento che torna a 1
+      e.sqx += (1 - e.sqx) * Math.min(1, dt * 9); e.sqy += (1 - e.sqy) * Math.min(1, dt * 9);
+      let frame;
+      const disabled = u.broken > 0 || u.statuses?.stun || u.statuses?.sleep || u.statuses?.frozen;
+      if (e.isHero) {
+        const idle = HERO_ANIM.idle;
+        frame = idle[Math.floor(t * 5 + e.phase) % idle.length];
+        if (u.defending) frame = HERO_ANIM.guard[0];
+        if (disabled) frame = idle[0];
+        if (e.anim) {
+          const a = e.anim;
+          a.t += dt;
+          if (e.lunge && e.lunge.t < 0.45) frame = HERO_ANIM.walk[Math.floor(t * 12) % 4];
+          else {
+            const tt = Math.max(0, a.t - (a.delay || 0)) / (a.dur - (a.delay || 0));
+            const idx = Math.min(a.frames.length - 1, Math.floor(tt * a.frames.length));
+            frame = a.frames[idx];
+            if (a.strike && idx === 1 && !a.hitSq) { a.hitSq = true; e.sqx = 1.16; e.sqy = 0.9; }
+          }
+          if (a.t >= a.dur) e.anim = null;
+        }
+        if (e.hitT > 0) { e.hitT -= dt; frame = HERO_ANIM.hurt[0]; }
+        if (e.dead) frame = HERO_ANIM.ko[0];
+        // esultanza alla vittoria
+        if (this.state?.combat?.phase === 'victory' && !e.dead) {
+          frame = Math.floor(t * 3 + e.phase) % 2 ? HERO_ANIM.cast[0] : HERO_ANIM.idle[0];
+          sp.mesh.position.y = Math.abs(Math.sin(t * 6 + e.phase)) * 0.18;
+        }
+      } else {
+        frame = Math.floor(t * 2.2 + e.phase) % 2;
+        if (e.atkT > 0) { e.atkT -= dt; frame = 2; }
+        if (e.hitT > 0) { e.hitT -= dt; frame = 3; }
+        if (disabled) frame = frame === 3 ? 3 : 0;
+      }
+      sp.mesh.position.x = e.hitT > 0 ? Math.sin(t * 80) * 0.05 : 0;
       sp.setFrame(frame);
+      // respiro e salti
+      const breath = e.dead ? 1 : 1 + Math.sin(t * 2.4 + e.phase) * 0.015;
+      sp.mesh.scale.set(e.sqx, e.sqy * breath, 1);
+      e.hop = Math.max(0, e.hop - dt);
+      const hopY = e.hop > 0 ? Math.sin((1 - e.hop / 0.5) * Math.PI) * 0.35 * Math.min(1, e.hop * 4) : 0;
       // fluttuazione per spettri / falene
       const fl = u.side === 'enemy' && ['specter', 'moth', 'queen'].includes(ENEMIES[u.enemyId]?.kind) ? 0.25 + Math.sin(t * 2 + e.phase) * 0.12 : 0;
-      sp.mesh.position.y = fl;
-      // morte
-      if (e.dead) {
+      if (!(e.isHero && this.state?.combat?.phase === 'victory')) sp.mesh.position.y = fl + hopY;
+      // morte: i nemici svaniscono, gli eroi restano in ginocchio (possono essere rianimati)
+      if (e.dead && !e.isHero) {
         e.deathT = Math.min(1, e.deathT + dt * 1.2);
         sp.mat.transparent = true; sp.mat.opacity = 1 - e.deathT;
         sp.mesh.position.y = fl - e.deathT * 0.3;

@@ -1,21 +1,23 @@
 // Lobby: invito, giocatori, creazione eroi, avvio/caricamento
 import { CLASSES, SKILLS } from '/shared/data/classes.js';
-import { TRAITS, LOOK, HERO_NAMES } from '/shared/data/heroes.js';
+import { TRAITS, LOOK, HERO_NAMES, HAIR_STYLES, BEARDS, ACCESSORIES, DEFAULT_LOOK } from '/shared/data/heroes.js';
 import { LORE } from '/shared/data/mythic.js';
 import { heroDerived, STAT_ABBR, STATS, MAX_HEROES } from '/shared/rules.js';
-import { heroFull, heroPortrait } from '../render/pixel.js';
+import { heroPortrait, heroStrip, HERO_ANIM, HERO_W, HERO_H } from '../render/pixel.js';
 import { esc, nl2p } from './util.js';
 
 export function renderLobby(app) {
   const { state, players, me, ui } = app;
-  const d = ui.draft ||= { name: HERO_NAMES[Math.floor(Math.random() * HERO_NAMES.length)], cls: 'lama', skin: LOOK.skin[0], hair: LOOK.hair[1] };
-  const preview = { cls: d.cls, look: { skin: d.skin, hair: d.hair }, transforms: [], equip: {}, level: 1, talents: [], traits: [], bonusStats: {} };
+  const d = ui.draft ||= { name: HERO_NAMES[Math.floor(Math.random() * HERO_NAMES.length)], cls: 'lama', look: { ...DEFAULT_LOOK, skin: LOOK.skin[1], hair: LOOK.hair[1] } };
+  d.look ||= { ...DEFAULT_LOOK };
+  const preview = { cls: d.cls, look: d.look, transforms: [], equip: {}, level: 1, talents: [], traits: [], bonusStats: {} };
   const cls = CLASSES[d.cls];
   const der = heroDerived(preview, null);
   const inv = app.invite || {};
   const isHost = me?.isHost;
   const full = state.heroes.length >= MAX_HEROES;
   const myHeroes = state.heroes.filter((h) => h.owner === me?.playerId).length;
+  const local = state.mode === 'local';
 
   const invite = `
     <div class="panel invite">
@@ -35,26 +37,44 @@ export function renderLobby(app) {
 
   const classCards = Object.values(CLASSES).map((c) => `
     <button class="cls-card ${c.id === d.cls ? 'sel' : ''}" data-act="draft" data-k="cls" data-v="${c.id}" style="--cc:${c.look.cloak}">
-      <img src="${heroPortrait({ cls: c.id, look: { skin: d.skin, hair: d.hair }, transforms: [], equip: {} }, 2)}" alt="">
+      <img src="${heroPortrait({ cls: c.id, look: d.look, transforms: [], equip: {} }, 2)}" alt="">
       <b>${c.icon} ${c.name}</b><small>${c.role}</small>
     </button>`).join('');
 
-  const swatches = (k, arr) => arr.map((col) => `<button class="sw ${d[k] === col ? 'sel' : ''}" style="background:${col}" data-act="draft" data-k="${k}" data-v="${col}"></button>`).join('');
+  const swatches = (k, arr) => arr.map((col) => `<button class="sw ${d.look[k] === col ? 'sel' : ''} ${col ? '' : 'sw-cls'}" style="background:${col || cls.look.cloak}" data-act="look" data-k="${k}" data-v="${col}" title="${col || 'Colore della classe'}">${col ? '' : '◆'}</button>`).join('');
+  const chips = (k, obj) => Object.entries(obj).map(([id, label]) => `<button class="chip ${d.look[k] === id ? 'sel' : ''}" data-act="look" data-k="${k}" data-v="${id}">${esc(label)}</button>`).join('');
+  const anims = [['idle', 'Riposo'], ['walk', 'Cammino'], ['attack', 'Attacco'], ['cast', 'Magia'], ['guard', 'Guardia'], ['hurt', 'Colpito']];
+  const an = ui.previewAnim || 'idle';
+  const seq = an === 'attack' ? [8, 8, 9, 10, 10, 0, 0] : an === 'cast' ? [0, 11, 11, 11, 0] : an === 'hurt' ? [12, 12, 0, 0] : an === 'guard' ? [14] : HERO_ANIM[an];
+  const SC = 5;
+  const strip = heroStrip(preview, seq, SC);
+  const dur = { idle: 0.9, walk: 0.5, attack: 0.8, cast: 1.1, guard: 1, hurt: 0.7 }[an];
 
   const creator = `
     <div class="panel creator">
       <h3>Forgia un Viandante</h3>
       <div class="cls-grid">${classCards}</div>
       <div class="creator-body">
-        <div class="preview"><img src="${heroFull(preview, 4)}" alt=""></div>
+        <div class="preview">
+          <div class="anim-preview" style="--w:${HERO_W * SC}px;--h:${HERO_H * SC}px;--n:${seq.length};--sw:${HERO_W * SC * seq.length}px;--dur:${dur}s;background-image:url(${strip})"></div>
+          <div class="anim-btns">${anims.map(([k, n]) => `<button class="chip ${an === k ? 'sel' : ''}" data-act="preview_anim" data-a="${k}">${n}</button>`).join('')}</div>
+          <button class="ghost" data-act="look_random" title="Aspetto casuale">🎲 Aspetto casuale</button>
+        </div>
         <div class="cinfo">
           <label>Nome <input id="heroName" maxlength="18" value="${esc(d.name)}" data-draft="name"></label>
-          <div class="sw-row"><span>Pelle</span>${swatches('skin', LOOK.skin)}</div>
-          <div class="sw-row"><span>Capelli</span>${swatches('hair', LOOK.hair)}</div>
+          <div class="look-ed">
+            <div class="sw-row"><span>Pelle</span><div>${swatches('skin', LOOK.skin)}</div></div>
+            <div class="sw-row"><span>Occhi</span><div>${swatches('eyes', LOOK.eyes)}</div></div>
+            <div class="sw-row"><span>Capelli</span><div>${swatches('hair', LOOK.hair)}</div></div>
+            <div class="sw-row"><span>Taglio</span><div>${chips('hairStyle', HAIR_STYLES)}</div></div>
+            <div class="sw-row"><span>Barba</span><div>${chips('beard', BEARDS)}</div></div>
+            <div class="sw-row"><span>Copricapo</span><div>${chips('acc', ACCESSORIES)}</div></div>
+            <div class="sw-row"><span>Abiti</span><div>${swatches('cloth', LOOK.cloth)}</div></div>
+          </div>
           <p class="cdesc">${esc(cls.desc)}</p>
-          <div class="statline">${STATS.map((s) => `<span><small>${STAT_ABBR[s]}</small>${der.stats[s]}</span>`).join('')}<span><small>PV</small>${der.maxHp}</span><span><small>PM</small>${der.maxMp}</span></div>
+          <div class="statline">${STATS.map((st) => `<span><small>${STAT_ABBR[st]}</small>${der.stats[st]}</span>`).join('')}<span><small>PV</small>${der.maxHp}</span><span><small>PM</small>${der.maxMp}</span></div>
           <div class="skills-mini">${cls.skills.map(([id, l]) => `<span title="${esc(SKILLS[id].desc)}">${esc(SKILLS[id].name)} <small>Lv${l}</small></span>`).join('')}</div>
-          <div class="subs">${cls.subclasses.map((s) => `<div><b>${esc(s.name)}</b> <small>(Lv3)</small> — ${esc(s.desc)}</div>`).join('')}</div>
+          <div class="subs">${cls.subclasses.map((sb) => `<div><b>${esc(sb.name)}</b> <small>(Lv3)</small> — ${esc(sb.desc)}</div>`).join('')}</div>
           <button class="primary" data-act="create_hero" ${full ? 'disabled' : ''}>${full ? 'Gruppo al completo' : 'Crea eroe'}</button>
           ${ui.legends?.length ? `<details class="legends"><summary>Richiama una Leggenda (${ui.legends.length})</summary>${ui.legends.map((l) => `<div class="leg"><b>${esc(l.name)}</b> ${esc(CLASSES[l.cls]?.name)} — <i>${esc(l.title || '')}</i> <button data-act="legend" data-id="${esc(l.id)}" ${full ? 'disabled' : ''}>Richiama</button></div>`).join('')}</details>` : ''}
         </div>
@@ -64,7 +84,7 @@ export function renderLobby(app) {
   const party = `
     <div class="panel partylist">
       <h3>Il Gruppo (${state.heroes.length}/${MAX_HEROES})</h3>
-      ${state.heroes.length ? '' : '<p class="muted">Nessun eroe. Ogni giocatore crea il proprio (con meno di 4 giocatori potete crearne più di uno a testa).</p>'}
+      ${state.heroes.length ? '' : `<p class="muted">${local ? 'Nessun eroe. Creane da 1 a 4: li guiderai tutti tu.' : 'Nessun eroe. Ogni giocatore crea il proprio (con meno di 4 giocatori potete crearne più di uno a testa).'}</p>`}
       ${state.heroes.map((h) => {
         const owner = players.find((p) => p.id === h.owner);
         const mine = h.owner === me?.playerId;
@@ -90,11 +110,12 @@ export function renderLobby(app) {
   return `
     <div class="lobby">
       <div class="lobby-head">
+        ${isHost ? '<button class="ghost back-menu" data-act="to_menu">◂ Menu principale</button>' : ''}
         <h1>Ceneri di Vael</h1>
-        <div class="subtitle">Un gioco di ruolo cooperativo nel crepuscolo eterno</div>
+        <div class="subtitle">${local ? '🏠 Campagna locale — tutti gli eroi si giocano da questo PC' : '🌐 Campagna online — un gioco di ruolo cooperativo nel crepuscolo eterno'}</div>
       </div>
       <div class="lobby-grid">
-        <div class="col">${invite}${plist}<div class="panel lore"><h3>Il Mondo</h3><div class="lore-text">${nl2p(LORE)}</div></div></div>
+        <div class="col">${local ? '<div class="panel"><h3>Campagna locale</h3><p class="small">Crea da 1 a 4 eroi: li guiderai tutti tu. In battaglia agiscono uno alla volta secondo la velocità, e nel viaggio assegni i dadi un eroe alla volta.</p><p class="muted small">Per giocare con altre persone torna al menu e scegli «Campagna online».</p></div>' : invite + plist}<div class="panel lore"><h3>Il Mondo</h3><div class="lore-text">${nl2p(LORE)}</div></div></div>
         <div class="col wide">${creator}</div>
         <div class="col">${party}</div>
       </div>

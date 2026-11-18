@@ -5,6 +5,7 @@ import { Game } from '../server/game.js';
 import { RNG } from '../server/rng.js';
 import { findPath } from '../server/mapgen.js';
 import { STORY } from '../shared/data/story.js';
+import { TUTORIAL_STORY } from '../shared/data/tutorial.js';
 import { heroDerived, successChance, checkBonus, hkey } from '../shared/rules.js';
 import { BIOMES } from '../shared/data/mythic.js';
 
@@ -19,7 +20,8 @@ function makeGame() {
 // sceglie la prossima destinazione della storia
 function target(s) {
   const tiles = Object.values(s.map.tiles);
-  const node = STORY[s.act].nodes.map((n) => tiles.find((t) => t.poi?.id === n.id)).find((t) => t && !t.poi.done);
+  const st = s.tutorial ? TUTORIAL_STORY : STORY[s.act];
+  const node = st.nodes.map((n) => tiles.find((t) => t.poi?.id === n.id)).find((t) => t && !t.poi.done);
   return node || s.map.boss;
 }
 function revealAll(s) { for (const t of Object.values(s.map.tiles)) t.rev = true; }
@@ -150,4 +152,52 @@ test('campagna completa fino al finale (party forte)', () => {
     assert.equal(ser.heroes.length, 4);
   }
   assert.ok(endings >= 1, 'nessuna simulazione ha raggiunto un finale');
+});
+
+test('dadi del cammino: un eroe alla volta, annullabili', () => {
+  const g = makeGame();
+  const p = g.addPlayer({ name: 'T', token: 'd', isHost: true });
+  for (const cls of ['lama', 'arcanista', 'custode']) g.handle(p, { type: 'create_hero', name: cls, cls });
+  g.handle(p, { type: 'start' });
+  while (g.s.phase === 'event') {
+    const e = g.s.event;
+    if (e.stage === 'choose') g.handle(p, { type: 'vote', idx: 0 });
+    else if (e.stage === 'roll') g.handle(p, { type: 'roll_check', heroId: g.s.heroes[0].id });
+    else if (e.stage === 'rolled') g.handle(p, { type: 'accept_roll' });
+    else g.handle(p, { type: 'event_continue' });
+  }
+  g.handle(p, { type: 'travel_roll' });
+  const [a, b] = g.s.travel.pool;
+  assert.throws(() => g.handle(p, { type: 'travel_assign', heroId: b.heroId, face: 'passi' }), /turno/);
+  g.handle(p, { type: 'travel_assign', heroId: a.heroId, face: a.face });
+  assert.equal(a.assign, a.face);
+  assert.throws(() => g.handle(p, { type: 'travel_assign', heroId: a.heroId, face: 'passi' }), /annullalo/);
+  g.handle(p, { type: 'travel_unassign', heroId: a.heroId });
+  assert.equal(a.assign, null);
+  assert.throws(() => g.handle(p, { type: 'travel_assign', heroId: b.heroId, face: 'passi' }), /turno/);
+});
+
+test('modalità locale e aspetto personalizzato', () => {
+  const g = makeGame();
+  const p = g.addPlayer({ name: 'T', token: 'm', isHost: true });
+  g.handle(p, { type: 'set_mode', mode: 'local' });
+  assert.equal(g.s.mode, 'local');
+  g.handle(p, { type: 'create_hero', name: 'A', cls: 'ombra', look: { hairStyle: 'treccia', beard: 'pizzetto', acc: 'benda', skin: '#nonvalido' } });
+  const h = g.s.heroes[0];
+  assert.equal(h.look.hairStyle, 'treccia');
+  assert.equal(h.look.acc, 'benda');
+  assert.notEqual(h.look.skin, '#nonvalido');
+  assert.throws(() => g.handle(p, { type: 'set_mode', mode: 'boh' }));
+});
+
+test('tutorial completo fino alla fine', () => {
+  const g = makeGame();
+  const p = g.addPlayer({ name: 'Allievo', token: 'tut', isHost: true });
+  g.handle(p, { type: 'start_tutorial' });
+  assert.equal(g.s.tutorial, true);
+  assert.equal(g.s.heroes.length, 3);
+  bot(g, p, 4000);
+  assert.equal(g.s.phase, 'ending', `il tutorial non è finito: ${g.s.phase}`);
+  assert.equal(g.s.ending.tutorial, true);
+  assert.ok(g.s.flags.tut_rig, 'il primo tiro truccato non è avvenuto');
 });

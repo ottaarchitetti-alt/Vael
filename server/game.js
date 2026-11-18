@@ -1,20 +1,22 @@
 // Stato della campagna e dispatcher delle azioni (server autoritativo)
 import crypto from 'node:crypto';
 import { RNG } from './rng.js';
-import { generateMap, reveal, findPath } from './mapgen.js';
+import { generateMap, generateTutorialMap, reveal, findPath } from './mapgen.js';
 import { startCombat, heroAction, availableActions, syncHeroes } from './combat.js';
 import { writeSave, listSaves, readSave, readLegends, addLegends } from './save.js';
 import { CLASSES } from '../shared/data/classes.js';
 import { ITEMS, AFFIXES, RARITY } from '../shared/data/items.js';
-import { TALENTS, TRAITS, TRANSFORMS, LOOK, BONDS } from '../shared/data/heroes.js';
+import { TALENTS, TRAITS, TRANSFORMS, BONDS, cleanLook } from '../shared/data/heroes.js';
 import { EVENTS, CAMP_SCENES, SOLO_SCENES } from '../shared/data/events.js';
 import { STORY_EVENTS, STORY, CHAPTERS, computeEnding } from '../shared/data/story.js';
+import { TUTORIAL_STORY, TUTORIAL_EVENTS, TUTORIAL_HEROES, TUTORIAL_ENDING } from '../shared/data/tutorial.js';
 import { MYTHIC, BIOMES, ACTS, FACTIONS } from '../shared/data/mythic.js';
 import { heroDerived, checkBonus, xpToNext, MAX_LEVEL, MAX_HEROES, SLOTS, hkey, STAT_NAMES, itemPrice, JOURNEY, hexDist } from '../shared/rules.js';
 
 const STEP_TABLE = [0, 1, 1, 1, 2, 2, 2, 3];
 const PLAYER_COLORS = ['#ffb547', '#7fd4ff', '#b58bff', '#7dff9a', '#ff7a8a', '#e8e0c8'];
-const allEvents = (id) => EVENTS[id] || STORY_EVENTS[id];
+const allEvents = (id) => EVENTS[id] || STORY_EVENTS[id] || TUTORIAL_EVENTS[id];
+export const MODES = ['local', 'online'];
 
 export class Game {
   constructor(onChange) {
@@ -22,12 +24,13 @@ export class Game {
     this.players = {}; // id -> {id, name, token, color, isHost, connected}
     this.timers = new Set();
     this.rng = new RNG(crypto.randomInt(1, 2 ** 31));
+    this.mode = 'online'; // 'local' = un solo PC, 'online' = stanza con codice
     this.s = this.lobbyState();
     this.pending = false;
   }
 
   lobbyState() {
-    return { phase: 'lobby', heroes: [], log: [], seq: 0, version: 1 };
+    return { phase: 'lobby', heroes: [], log: [], seq: 0, version: 1, mode: this.mode };
   }
 
   // ---------------- utilità ----------------
@@ -57,6 +60,7 @@ export class Game {
     return player.isHost && (!owner || !owner.connected);
   }
   heroName(h) { return h ? h.name : 'qualcuno'; }
+  story() { return this.s.tutorial ? TUTORIAL_STORY : STORY[this.s.act]; }
 
   // ---------------- giocatori ----------------
   addPlayer({ name, token, isHost }) {
@@ -143,20 +147,20 @@ export class Game {
   }
 
   // ---------------- creazione eroi (lobby) ----------------
-  newHero(owner, { name, cls, skin, hair, legend }) {
+  newHero(owner, { name, cls, look, skin, hair, legend }) {
     if (!CLASSES[cls]) throw 'Classe sconosciuta';
     const id = 'H' + crypto.randomBytes(3).toString('hex');
     const traits = this.rng.shuffle(Object.keys(TRAITS)).slice(0, 2);
     const h = {
       id, owner: owner.id, ownerName: owner.name, name: (name || 'Senza Nome').slice(0, 18), cls, sub: null, job: null,
       level: 1, xp: 0, hp: 1, mp: 1, alive: true, bonusStats: {}, equip: {}, talents: [], traits, transforms: [], bonds: {},
-      age: this.rng.int(19, 34), look: { skin: LOOK.skin.includes(skin) ? skin : LOOK.skin[0], hair: LOOK.hair.includes(hair) ? hair : LOOK.hair[0] },
+      age: this.rng.int(19, 34), look: cleanLook({ skin, hair, ...(look || {}) }),
       pendingTalents: [], pendingSub: false, row: CLASSES[cls].row, legend: false, kills: 0,
     };
     if (legend) {
       const L = readLegends().find((x) => x.id === legend);
       if (L) {
-        Object.assign(h, { name: L.name, cls: L.cls, traits: L.traits, transforms: L.transforms || [], look: L.look, age: L.age + 20, legend: true, title: L.title });
+        Object.assign(h, { name: L.name, cls: L.cls, traits: L.traits, transforms: L.transforms || [], look: cleanLook(L.look), age: L.age + 20, legend: true, title: L.title });
       }
     }
     for (const b of CLASSES[h.cls].start) {
@@ -170,32 +174,33 @@ export class Game {
   }
 
   // ---------------- campagna ----------------
-  newCampaign() {
+  newCampaign({ tutorial = false } = {}) {
     const s = this.s;
     const seed = crypto.randomInt(1, 2 ** 31);
+    s.tutorial = tutorial;
     this.rng = new RNG(seed);
     Object.assign(s, {
       phase: 'map', seed, act: 1, day: 1, threat: 5, fate: 3, fateMax: 5, gold: 60, rations: 8,
       bag: [], flags: {}, rep: { lantern: 0, moth: 0, salt: 0, eclipse: 0 }, moral: { fiamma: 0, falena: 0, sale: 0 },
       mythic: null, crystals: 0, chronicle: [], event: null, combat: null, town: null, camp: null, chapter: null, vote: null, ending: null,
-      rollSeq: 0, campaignName: `Viandanti ${new Date().toLocaleDateString('it-IT')}`,
+      rollSeq: 0, campaignName: tutorial ? 'Tutorial' : `Viandanti ${new Date().toLocaleDateString('it-IT')}`,
     });
     for (const b of ['pozione', 'pozione', 'pozione', 'etere', 'olio_lume']) s.bag.push(this.makeItem(b));
     for (const h of s.heroes) { const d = heroDerived(h, s); h.hp = d.maxHp; h.mp = d.maxMp; h.alive = true; }
-    this.log('La campagna ha inizio. ' + ACTS[1].name, 'title');
+    this.log(tutorial ? 'Il tutorial ha inizio: segui i suggerimenti della guida.' : 'La campagna ha inizio. ' + ACTS[1].name, 'title');
     this.setupAct(1);
   }
 
   setupAct(act) {
     const s = this.s;
     s.act = act;
-    s.map = generateMap(this.rng, act);
+    s.map = s.tutorial ? generateTutorialMap(this.rng) : generateMap(this.rng, act);
     s.party = { ...s.map.start };
     reveal(s.map, s.party.q, s.party.r, 3);
     s.map.tiles[hkey(s.party.q, s.party.r)].vis = true;
     s.travel = { stage: 'roll', pool: [], rollId: 0, steps: 0, vedetta: 0 };
     for (const h of s.heroes) { const d = heroDerived(h, s); h.alive = true; h.hp = d.maxHp; h.mp = d.maxMp; }
-    this.startEvent(STORY[act].intro, null);
+    this.startEvent(this.story().intro, null);
   }
 
   // ---------------- dispatcher ----------------
@@ -245,6 +250,28 @@ export class Game {
         if (!process.env.VAEL_DEBUG || s.phase !== 'map') throw 'Non disponibile';
         s.afterCombat = 'map';
         startCombat(this, a.boss ? [a.boss] : 'random', a.boss ? { boss: true } : {});
+        break;
+      }
+      case 'set_mode': {
+        hostOnly();
+        if (s.phase !== 'lobby') throw 'Solo nella lobby';
+        if (!MODES.includes(a.mode)) throw 'Modalità sconosciuta';
+        this.mode = s.mode = a.mode;
+        if (a.mode === 'local') {
+          // in locale tutti gli eroi sono guidati da chi sta al PC
+          for (const h of s.heroes) { h.owner = player.id; h.ownerName = player.name; }
+        }
+        this.log(a.mode === 'local' ? 'Campagna locale: guiderai tutti gli eroi da questo PC.' : 'Campagna online: invita i compagni con il codice stanza.', 'sys');
+        break;
+      }
+      case 'start_tutorial': {
+        hostOnly();
+        if (s.phase !== 'lobby' && s.phase !== 'ending' && s.phase !== 'gameover') throw 'Chiudi prima la partita in corso';
+        this.clearTimers();
+        this.mode = 'local';
+        this.s = this.lobbyState();
+        for (const t of TUTORIAL_HEROES) this.s.heroes.push(this.newHero(player, t));
+        this.newCampaign({ tutorial: true });
         break;
       }
       case 'start': {
@@ -316,6 +343,7 @@ export class Game {
       // ---- viaggio ----
       case 'travel_roll': this.travelRoll(); break;
       case 'travel_assign': this.travelAssign(player, a); break;
+      case 'travel_unassign': this.travelUnassign(player, a); break;
       case 'travel_confirm': this.travelConfirm(player); break;
       case 'move': this.move(a); break;
       case 'end_day': this.endDay(); break;
@@ -413,13 +441,26 @@ export class Game {
     t.stage = 'assign';
     this.log(`Giorno ${this.s.day}: la Riserva del Cammino dà ${t.pool.map((p) => p.v).join(' · ')}.`, 'info');
   }
+  // I dadi si assegnano uno alla volta, nell'ordine della Riserva: tocca sempre al primo dado libero.
   travelAssign(player, { heroId, face }) {
     this.requireTravel('assign');
     if (!JOURNEY[face]) throw 'Uso non valido';
-    const die = this.s.travel.pool.find((p) => p.heroId === heroId);
+    const pool = this.s.travel.pool;
+    const die = pool.find((p) => p.heroId === heroId);
     if (!die) throw 'Dado non trovato';
     if (!this.canControl(player, this.hero(heroId))) throw 'Il dado appartiene a un altro giocatore';
+    if (die.assign) throw 'Dado già assegnato: annullalo per cambiarlo';
+    const cur = pool.find((p) => !p.assign);
+    if (cur !== die) throw `Non è ancora il turno di ${this.heroName(this.hero(heroId))}: tocca a ${this.heroName(this.hero(cur.heroId))}`;
     die.assign = face;
+  }
+  // Annulla l'assegnazione di un dado (e quindi anche il suo eventuale +1 di specialità)
+  travelUnassign(player, { heroId }) {
+    this.requireTravel('assign');
+    const die = this.s.travel.pool.find((p) => p.heroId === heroId);
+    if (!die || !die.assign) throw 'Niente da annullare';
+    if (!this.canControl(player, this.hero(heroId)) && !player.isHost) throw 'Il dado appartiene a un altro giocatore';
+    die.assign = null;
   }
   travelConfirm(player) {
     this.requireTravel('assign');
@@ -465,7 +506,7 @@ export class Game {
       }
       // incontri casuali (stile JRPG)
       const bd = BIOMES[tile.b];
-      if (bd.danger && !tile.poi) {
+      if (bd.danger && !tile.poi && !s.tutorial) {
         const p = Math.max(2, ((bd.danger + s.threat / 5 + (tile.cor ? 12 : 0)) * 0.3 - t.vedetta * 1.2)) / 100;
         if (this.rng.chance(p)) {
           this.log('Un\'imboscata lungo il cammino!', 'bad');
@@ -491,7 +532,7 @@ export class Game {
     }
     if (starving) this.log(`${starving} eroi patiscono la fame (−15% PV).`, 'bad');
     // minaccia
-    const inc = ACTS[s.act].threatRate + Math.floor(s.day / 12);
+    const inc = s.tutorial ? 2 : ACTS[s.act].threatRate + Math.floor(s.day / 12);
     s.threat = Math.min(100, s.threat + inc);
     this.spreadCorruption();
     s.day++;
@@ -499,6 +540,7 @@ export class Game {
     s.travel = { stage: 'roll', pool: [], rollId: s.travel.rollId, steps: 0, vedetta: s.travel.vedetta || 0 };
     if (s.threat >= 100) return;
     if (s.day % 5 === 0) this.autosave();
+    if (s.tutorial) return;
     // agguato notturno
     const tile = s.map.tiles[hkey(s.party.q, s.party.r)];
     const bd = BIOMES[tile.b];
@@ -543,12 +585,12 @@ export class Game {
       case 'event': this.startEvent(poi.id, tile); return true;
       case 'story': this.startEvent(poi.id, tile); return true;
       case 'boss': {
-        const missing = STORY[s.act].nodes.filter((n) => !Object.values(s.map.tiles).find((t) => t.poi?.id === n.id)?.poi.done);
+        const missing = this.story().nodes.filter((n) => !Object.values(s.map.tiles).find((t) => t.poi?.id === n.id)?.poi.done);
         if (missing.length) {
           this.log(`${poi.name}: un sigillo di cenere vi respinge. Completate prima la storia di questo atto (★).`, 'bad');
           return false;
         }
-        this.startEvent(STORY[s.act].boss(s.flags), tile);
+        this.startEvent(this.story().boss(s.flags), tile);
         return true;
       }
     }
@@ -638,7 +680,10 @@ export class Game {
   }
   doRoll(h) {
     const s = this.s, e = s.event;
-    const nat = this.rng.d(20);
+    let nat = this.rng.d(20);
+    // nel tutorial il primo tiro fallisce e il ritiro riesce, per mostrare le Scintille del Fato
+    if (s.tutorial && !s.flags.tut_rig) { nat = 3; s.flags.tut_rig = 1; }
+    else if (s.tutorial && s.flags.tut_rig === 1 && e.roll?.heroId === h.id) { nat = Math.max(nat, 16); s.flags.tut_rig = 2; }
     const bonus = checkBonus(h, e.check.stat, s);
     const total = nat + bonus;
     const success = nat === 20 || (nat !== 1 && total >= e.check.dc);
@@ -680,7 +725,7 @@ export class Game {
     if (tile?.poi && !p.keep && !p.boss) {
       tile.poi.done = true;
       if (tile.poi.t === 'story') {
-        const left = STORY[s.act].nodes.filter((n) => !Object.values(s.map.tiles).find((t) => t.poi?.id === n.id)?.poi.done);
+        const left = this.story().nodes.filter((n) => !Object.values(s.map.tiles).find((t) => t.poi?.id === n.id)?.poi.done);
         if (!left.length) { reveal(s.map, s.map.boss.q, s.map.boss.r, 1); this.log(`★ La via per ${s.map.tiles[hkey(s.map.boss.q, s.map.boss.r)].poi.name} è aperta.`, 'title'); }
       }
     }
@@ -951,6 +996,12 @@ export class Game {
   endAct() {
     const s = this.s;
     s.crystals++;
+    if (s.tutorial) {
+      s.phase = 'ending';
+      s.ending = { ...TUTORIAL_ENDING, tutorial: true, heroes: s.heroes.map((h) => ({ name: h.name, cls: h.cls, alive: h.alive, age: h.age, level: h.level })) };
+      this.log(`🌅 ${TUTORIAL_ENDING.title}`, 'title');
+      return;
+    }
     if (s.act >= 3) {
       s.phase = 'ending';
       s.ending = computeEnding(s);
@@ -1020,7 +1071,7 @@ export class Game {
     this.log(`💾 Partita salvata: ${file}`, 'sys');
     return file;
   }
-  autosave() { try { writeSave('autosalvataggio', this.serialize(), this.meta()); } catch (e) { console.error('autosave', e); } }
+  autosave() { if (this.s.tutorial) return; try { writeSave('autosalvataggio', this.serialize(), this.meta()); } catch (e) { console.error('autosave', e); } }
   load(file) {
     const data = readSave(file);
     this.clearTimers();

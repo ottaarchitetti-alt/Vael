@@ -1,7 +1,7 @@
 // HUD: barra superiore, schede del gruppo, diario/chat, pannello di viaggio, menu
 import { CLASSES } from '/shared/data/classes.js';
 import { ACTS, MYTHIC, BIOMES, FACTIONS, LORE } from '/shared/data/mythic.js';
-import { heroDerived, JOURNEY, hkey } from '/shared/rules.js';
+import { heroDerived, JOURNEY, hkey, STATUSES } from '/shared/rules.js';
 import { heroPortrait } from '../render/pixel.js';
 import { d6Html } from '../render/dice.js';
 import { esc, bar, nl2p } from './util.js';
@@ -15,7 +15,7 @@ export function renderTop(app) {
   const th = s.threat;
   return `
     <div class="topbar">
-      <div class="tb-left"><div class="act">${esc(act?.name || '')}</div><div class="day">Giorno ${s.day}${s.mythic ? ` · <span style="color:${MYTHIC[s.mythic].color}">${MYTHIC[s.mythic].icon} ${MYTHIC[s.mythic].name}</span>` : ''}</div></div>
+      <div class="tb-left"><div class="act">${s.tutorial ? '📖 Tutorial — La prova dei Viandanti' : esc(act?.name || '')}</div><div class="day">Giorno ${s.day}${s.mythic ? ` · <span style="color:${MYTHIC[s.mythic].color}">${MYTHIC[s.mythic].icon} ${MYTHIC[s.mythic].name}</span>` : ''}</div></div>
       <div class="tb-center">
         <div class="threat" title="Cenere Marea: avanza ogni giorno e con alcune scelte. A 100% la partita è persa. Accendete i Fari per respingerla.">
           <div class="th-label">Cenere Marea <b>${th}%</b></div>
@@ -50,16 +50,18 @@ export function renderParty(app) {
   }).join('');
 }
 function cardHtml(h, hp, mhp, mp, mmp, owner, mine, pend, active, alive, u) {
-  const st = u ? Object.keys(u.statuses || {}).join(' ') : '';
-  return `<div class="hcard ${active ? 'active' : ''} ${alive ? '' : 'dead'} ${mine ? 'mine' : ''}" data-act="sheet" data-hero="${h.id}" style="--pc:${owner?.color || '#888'}">
-    <img class="portrait" src="${heroPortrait(h, 2)}" alt="">
+  const st = u ? Object.keys(u.statuses || {}).map((k) => `<span title="${esc(STATUSES[k]?.name || k)}">${STATUSES[k]?.icon || '•'}</span>`).join('') : '';
+  const low = alive && mhp && hp / mhp < 0.3;
+  return `<div class="hcard ${active ? 'active' : ''} ${alive ? '' : 'dead'} ${mine ? 'mine' : ''} ${low ? 'low' : ''}" data-act="sheet" data-hero="${h.id}" style="--pc:${owner?.color || '#888'}" title="${esc(h.name)} — apri la scheda">
+    <div class="hc-face"><img class="portrait" src="${heroPortrait(h, 2)}" alt="">${pend ? `<span class="lvup" title="Scelte di livello in sospeso">▲${pend}</span>` : ''}</div>
     <div class="hc-body">
-      <div class="hc-name">${esc(h.name)} <small>Lv${h.level}</small>${pend ? `<span class="lvup" title="Scelte di livello in sospeso">▲${pend}</span>` : ''}</div>
-      <div class="hc-cls">${CLASSES[h.cls].icon} ${CLASSES[h.cls].name}${u ? ` · ${u.row ? 'Retro' : 'Fronte'}` : ''}</div>
-      ${bar(hp, mhp, 'hp')}${bar(mp, mmp, 'mp')}
-      ${st ? `<div class="hc-st">${esc(st)}</div>` : ''}
+      <div class="hc-name">${esc(h.name)} <small>Lv ${h.level}</small></div>
+      <div class="hc-cls">${CLASSES[h.cls].icon} ${CLASSES[h.cls].name}${u ? ` · ${u.row ? 'Retro' : 'Fronte'}` : ''}${u?.charge ? ` · <b class="chg">${'◆'.repeat(u.charge)}</b>` : ''}</div>
+      <div class="hc-bars"><label>PV</label>${bar(hp, mhp, 'hp')}<label>PM</label>${bar(mp, mmp, 'mp')}</div>
+      ${st ? `<div class="hc-st">${st}</div>` : ''}
     </div>
     ${alive ? '' : '<div class="dead-mark">✝</div>'}
+    ${active ? '<div class="hc-turn">Turno</div>' : ''}
   </div>`;
 }
 
@@ -77,7 +79,7 @@ export function renderTravel(app) {
   if (t.stage === 'roll') {
     return `<div class="travel">
       <div class="tr-title">Giorno ${s.day} — Alba sul crepuscolo</div>
-      <p class="muted">Ogni eroe tira un dado. Poi decidete insieme come usarli: camminare, foraggiare, fare la guardia o cercare tesori. Usare un dado nella <b>specialità</b> dell'eroe gli dà +1.</p>
+      <p class="muted">Ogni eroe tira un dado. Poi, <b>un eroe alla volta</b>, si sceglie come usarlo: camminare, foraggiare, fare la guardia o cercare tesori. Usarlo nella <b>specialità</b> dell'eroe dà +1; ogni scelta si può annullare con ↺.</p>
       <button class="primary big" data-act="travel_roll">🎲 Tira la Riserva del Cammino</button>
     </div>`;
   }
@@ -85,16 +87,28 @@ export function renderTravel(app) {
     const rolling = app.ui.lastPoolRoll !== t.rollId;
     if (rolling) setTimeout(() => { app.ui.lastPoolRoll = t.rollId; }, 1200);
     const all = t.pool.every((p) => p.assign);
+    const cur = t.pool.find((p) => !p.assign);
+    const curHero = cur && s.heroes.find((x) => x.id === cur.heroId);
+    const curOwner = curHero && app.players.find((p) => p.id === curHero.owner);
+    const myTurn = cur && mine(cur.heroId);
+    const head = all ? 'Tutti i dadi sono assegnati'
+      : myTurn ? `Tocca a <b>${esc(curHero.name)}</b>: scegli come usare il suo dado`
+        : `Tocca a <b>${esc(curHero.name)}</b> — <span style="color:${curOwner?.color || '#aaa'}">${esc(curOwner?.name || '')}</span> sta scegliendo...`;
     return `<div class="travel">
-      <div class="tr-title">Assegnate i dadi del giorno</div>
+      <div class="tr-title">${head}</div>
       <div class="pool">${t.pool.map((p) => {
         const h = s.heroes.find((x) => x.id === p.heroId);
         const can = mine(p.heroId);
-        return `<div class="pdie ${p.assign ? 'set' : ''}">
+        const isCur = p === cur;
+        const spec = p.assign && p.assign === p.face;
+        const val = Math.min(7, p.v + (spec ? 1 : 0));
+        return `<div class="pdie ${p.assign ? 'set' : ''} ${isCur ? 'cur' : ''} ${!p.assign && !isCur ? 'wait' : ''}">
           <div class="pd-head"><img src="${heroPortrait(h, 1)}" alt=""><span>${esc(h.name)}</span></div>
-          ${d6Html(p.v, rolling)}
-          <div class="pd-opts">${Object.entries(JOURNEY).map(([k, j]) => `<button class="jf ${p.assign === k ? 'sel' : ''} ${p.face === k ? 'spec' : ''}" ${can ? '' : 'disabled'} data-act="travel_assign" data-hero="${p.heroId}" data-face="${k}" title="${esc(j.name)}: ${esc(j.desc)}${p.face === k ? ' — SPECIALITÀ (+1)' : ''}">${j.icon}</button>`).join('')}</div>
-          <small>${p.assign ? JOURNEY[p.assign].name + (p.assign === p.face ? ' +1' : '') : can ? 'Scegli' : 'In attesa...'}</small>
+          <div class="pd-val">${d6Html(p.v, rolling)}${spec ? '<span class="pd-bonus" title="Specialità della classe">+1</span>' : ''}</div>
+          ${p.assign
+            ? `<div class="pd-done"><span>${JOURNEY[p.assign].icon} ${JOURNEY[p.assign].name} <b>${val}</b></span>${can || app.me?.isHost ? `<button class="ghost small" data-act="travel_unassign" data-hero="${p.heroId}" title="Annulla l'assegnazione (rimuove anche il +1)">↺ Annulla</button>` : ''}</div>`
+            : `<div class="pd-opts">${Object.entries(JOURNEY).map(([k, j]) => `<button class="jf ${p.face === k ? 'spec' : ''}" ${can && isCur ? '' : 'disabled'} data-act="travel_assign" data-hero="${p.heroId}" data-face="${k}" title="${esc(j.name)}: ${esc(j.desc)}${p.face === k ? ' — SPECIALITÀ (+1)' : ''}">${j.icon}${p.face === k ? '<i>+1</i>' : ''}</button>`).join('')}</div>
+               <small>${isCur ? (can ? 'Scegli un uso' : 'Sta scegliendo...') : 'In attesa del proprio turno'}</small>`}
         </div>`;
       }).join('')}</div>
       <button class="primary" data-act="travel_confirm" ${all || app.me?.isHost ? '' : 'disabled'}>${all ? 'Conferma e parti' : app.me?.isHost ? 'Conferma (i dadi liberi vanno al Cammino)' : 'In attesa di tutti...'}</button>
@@ -156,7 +170,7 @@ export function renderMenu(app) {
 }
 
 const GUIDE = `
-<h4>Il viaggio</h4><p>Ogni giornata il gruppo tira la <b>Riserva del Cammino</b>: un dado per eroe. Ogni giocatore assegna i dadi dei propri eroi a <b>Cammino</b> (passi), <b>Foraggio</b> (razioni), <b>Vedetta</b> (meno agguati, vista più ampia) o <b>Ricerca</b> (oro e oggetti). La specialità della classe dà +1. A fine giornata ogni eroe consuma una razione e la <b>Cenere Marea</b> avanza.</p>
+<h4>Il viaggio</h4><p>Ogni giornata il gruppo tira la <b>Riserva del Cammino</b>: un dado per eroe. Poi, <b>un eroe alla volta</b>, ciascuno assegna il proprio dado a <b>Cammino</b> (passi), <b>Foraggio</b> (razioni), <b>Vedetta</b> (meno agguati, vista più ampia) o <b>Ricerca</b> (oro e oggetti). La specialità della classe dà +1; con ↺ Annulla si toglie un'assegnazione (e il suo +1). A fine giornata ogni eroe consuma una razione e la <b>Cenere Marea</b> avanza.</p>
 <h4>Prove e Fato</h4><p>Le scelte degli eventi si votano (maggioranza, l'host spareggia). Le prove si risolvono con <b>d20 + modificatore</b> contro una <b>CD</b>: scegliete l'eroe più adatto. Un fallimento può essere ritirato spendendo una <b>Scintilla del Fato</b>, risorsa condivisa.</p>
 <h4>Battaglia</h4><p>Gli schieramenti hanno due file: la <b>fila avanti</b> protegge quella dietro dagli attacchi corpo a corpo. Archi, bastoni, lanterne e magie colpiscono ovunque. Ogni nemico ha una <b>Guardia</b> 🛡: colpirne le <b>debolezze</b> la riduce; a zero il nemico è <b>Spezzato</b>, salta il turno e subisce +50% danni. Usate <b>Slancio</b> per caricare il colpo successivo (fino a ×2.5), <b>Analizza</b> per scoprire le debolezze, e i <b>Concerti</b> tra eroi legati.</p>
 <h4>Combinazioni</h4><p>Bagnato + Fulmine = danno doppio. Congelato + Botta = Frantumato. Marchiato = +25% danni e più critici. Stordito/Spezzato/Marchiato + Pugnalata = colpo alle spalle.</p>

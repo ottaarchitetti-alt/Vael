@@ -154,8 +154,8 @@ export function renderEnding(app) {
     ${e.notes?.length ? `<ul class="gains">${e.notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>` : ''}
     <h4>I Viandanti</h4><div class="end-heroes">${app.state.heroes.map((h) => `<div><img src="${heroPortrait(h, 3)}" alt=""><b>${esc(h.name)}</b><small>${CLASSES[h.cls].name} · ${h.age} anni${h.alive ? '' : ' · caduto'}</small></div>`).join('')}</div>
     ${e.chronicle?.length ? `<details><summary>La cronaca completa</summary><ol class="chron">${e.chronicle.map((c) => `<li><small>Atto ${c.act}</small> ${esc(c.text)}</li>`).join('')}</ol></details>` : ''}
-    <p class="muted">Gli eroi sopravvissuti sono diventati Leggende: potrete richiamarli in una nuova campagna.</p>
-    ${app.me?.isHost ? '<div class="btnrow"><button class="primary" data-act="to_lobby">Nuova campagna</button></div>' : ''}
+    ${e.tutorial ? '' : '<p class="muted">Gli eroi sopravvissuti sono diventati Leggende: potrete richiamarli in una nuova campagna.</p>'}
+    ${app.me?.isHost ? (e.tutorial ? '<div class="btnrow"><button class="primary" data-act="tut_exit">Torna al menu principale</button></div>' : '<div class="btnrow"><button class="primary" data-act="to_lobby">Nuova campagna</button></div>') : ''}
   </div>`;
 }
 

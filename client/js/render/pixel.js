@@ -2,7 +2,7 @@
 import { CLASSES } from '/shared/data/classes.js';
 import { ITEMS } from '/shared/data/items.js';
 import { ENEMIES } from '/shared/data/enemies.js';
-import { TRANSFORMS } from '/shared/data/heroes.js';
+import { TRANSFORMS, DEFAULT_LOOK } from '/shared/data/heroes.js';
 
 // ---------- primitive ----------
 export function canvas(w, h) {
@@ -96,157 +96,361 @@ function tint(c, color, alpha) {
 }
 
 // ================= EROI =================
-export const HERO_W = 32, HERO_H = 40;
+// Foglio di 15 fotogrammi 32×40, l'eroe guarda a sinistra.
+export const HERO_W = 32, HERO_H = 40, HERO_FRAMES = 15;
+export const HERO_ANIM = {
+  idle: [0, 1, 2, 3], walk: [4, 5, 6, 7], attack: [8, 9, 10], cast: [11], hurt: [12], ko: [13], guard: [14],
+};
+// copricapo predefinito di ogni classe (quando l'accessorio è «Della classe»)
+const CLASS_HEADWEAR = { lama: 'elmo', ombra: 'cappuccio', arcanista: 'cappello', custode: 'mitra', cantore: 'piuma', cacciatrice: 'fascia' };
 
-function drawWeapon(p, wtype, pose, cls) {
-  const steel = '#c8ccd4', dark = '#5a4a3a', gold = '#d9a83a';
-  // mano anteriore ~ (9,27) in idle, (5,23) in attacco
-  const hx = pose === 'attack' ? 4 : 9, hy = pose === 'attack' ? 23 : 27;
+// pose: by = alzata del busto, lean = inclinazione, legs = [dxF, dyF, dxB, dyB], arm = braccio anteriore,
+// armB = oscillazione del braccio posteriore, sway = mantello/capelli, wpn = posa dell'arma
+const POSES = [
+  { by: 0, sway: 0, arm: 'down', wpn: 'idle' },
+  { by: 0, sway: 1, arm: 'down', wpn: 'idle' },
+  { by: 1, sway: 2, arm: 'down', wpn: 'idle', armDy: 1 },
+  { by: 1, sway: 1, arm: 'down', wpn: 'idle', armDy: 1, blink: true },
+  { by: 0, sway: 2, legs: [-2, 0, 2, 0], arm: 'swing', swing: 2, armB: -1, wpn: 'idle' },
+  { by: -1, sway: 1, legs: [0, -1, 0, 0], arm: 'swing', swing: 0, armB: 0, wpn: 'idle' },
+  { by: 0, sway: 0, legs: [2, 0, -2, 0], arm: 'swing', swing: -2, armB: 1, wpn: 'idle' },
+  { by: -1, sway: 1, legs: [0, 0, 0, -1], arm: 'swing', swing: 0, armB: 0, wpn: 'idle' },
+  { by: 0, lean: 1, sway: 0, legs: [-1, 0, 1, 0], arm: 'back', wpn: 'raise' },
+  { by: 0, lean: -2, sway: 2, legs: [-3, 0, 1, 0], arm: 'fwd', wpn: 'strike' },
+  { by: 1, lean: -1, sway: 2, legs: [-3, 0, 1, 0], arm: 'fwd', wpn: 'low' },
+  { by: -1, sway: 2, arm: 'up', armBUp: true, wpn: 'cast', glow: true },
+  { by: 0, lean: 2, sway: 0, legs: [1, 0, 2, 0], arm: 'down', wpn: 'idle', hurt: true },
+  { by: 6, lean: 1, sway: 1, kneel: true, arm: 'limp', wpn: 'ground', blink: true },
+  { by: 0, lean: -1, sway: 1, legs: [-1, 0, 1, 0], arm: 'guard', wpn: 'guard' },
+];
+
+// linea spessa 2px
+function thick(p, c, x0, y0, x1, y1) { p.l(c, x0, y0, x1, y1); p.l(c, x0, y0 + 1, x1, y1 + 1); }
+
+function drawWeapon(p, wtype, pose, H, glowCol) {
+  const steel = '#c8ccd4', steelL = '#eef0f4', dark = '#4a3a2e', gold = '#d9a83a', wood = '#7a5a3a';
+  const [hx, hy] = H;
+  // direzione della lama per posa
+  const DIR = { idle: [0, -1], raise: [1, -1], strike: [-1, 0], low: [-1, 1], guard: [-1, -1], cast: [0, -1], ground: [-1, 0] };
+  const [dx, dy] = DIR[pose] || DIR.idle;
+  const k = dx && dy ? 0.75 : 1;
+  const end = (len) => [hx + Math.round(dx * len * k), hy + Math.round(dy * len * k)];
+  if (pose === 'ground') {
+    // arma a terra davanti all'eroe
+    if (wtype === 'bastone') { p.r(wood, 2, 37, 16, 1); p.e(glowCol, 2, 36, 1, 1); }
+    else if (wtype === 'arco') p.l('#8a6a3a', 3, 37, 13, 35);
+    else if (wtype === 'lanterna') { p.r(gold, 4, 34, 4, 4); p.r('#8a7a50', 5, 35, 2, 2); }
+    else p.r(steel, 3, 37, 10, 1);
+    return;
+  }
   switch (wtype) {
-    case 'spada':
-      if (pose === 'attack') { p.l(steel, hx - 1, hy, hx - 9, hy - 4); p.l(shade('#c8ccd4', 0.3), hx - 1, hy - 1, hx - 9, hy - 5); p.r(gold, hx - 1, hy - 2, 1, 4); }
-      else { p.r(steel, hx - 1, hy - 13, 2, 12); p.r(shade(steel, 0.4), hx - 1, hy - 13, 1, 12); p.r(gold, hx - 3, hy - 1, 6, 1); p.r(dark, hx - 1, hy, 2, 3); }
-      break;
-    case 'pugnale':
-      if (pose === 'attack') { p.l(steel, hx - 1, hy, hx - 6, hy - 1); p.r(dark, hx, hy - 1, 2, 2); }
-      else { p.r(steel, hx - 1, hy - 6, 1, 6); p.r(dark, hx - 1, hy, 2, 2); }
-      break;
-    case 'bastone': {
-      const glow = cls === 'arcanista' ? '#8fe3ff' : '#ffd27a';
-      if (pose === 'attack') { p.l('#7a5a3a', hx + 2, hy + 6, hx - 6, hy - 10); p.e(glow, hx - 7, hy - 12, 2, 2); p.r('#ffffff', hx - 7, hy - 13, 1, 1); }
-      else { p.r('#7a5a3a', hx - 1, hy - 16, 2, 22); p.e(glow, hx, hy - 18, 2, 2); p.r('#ffffff', hx - 1, hy - 19, 1, 1); }
+    case 'spada': case 'pugnale': {
+      const [ex, ey] = end(wtype === 'spada' ? 12 : 6);
+      thick(p, steel, hx, hy, ex, ey);
+      p.l(steelL, hx, hy, ex, ey);
+      // guardia perpendicolare alla lama, impugnatura e pomo dalla parte opposta
+      if (dx === 0) p.r(gold, hx - 2, hy, 5, 1);
+      else if (dy === 0) p.r(gold, hx, hy - 2, 1, 5);
+      else { p.r(gold, hx - 1, hy - 1, 1, 1); p.r(gold, hx + 1, hy + 1, 1, 1); p.r(gold, hx, hy, 1, 1); }
+      p.r(dark, hx - dx * 2, hy - dy * 2, 2, 2);
+      p.r(gold, hx - dx * 3, hy - dy * 3, 1, 1);
       break;
     }
-    case 'arco':
-      if (pose === 'attack') { p.l('#8a6a3a', hx - 2, hy - 9, hx - 4, hy); p.l('#8a6a3a', hx - 4, hy, hx - 2, hy + 9); p.l('#e8e0c8', hx - 2, hy - 9, hx + 4, hy); p.l('#e8e0c8', hx + 4, hy, hx - 2, hy + 9); p.l(steel, hx + 4, hy, hx - 8, hy); }
-      else { p.l('#8a6a3a', hx, hy - 12, hx - 3, hy - 4); p.l('#8a6a3a', hx - 3, hy - 4, hx - 3, hy + 2); p.l('#8a6a3a', hx - 3, hy + 2, hx, hy + 8); p.l('#e8e0c8', hx, hy - 12, hx, hy + 8); }
+    case 'mazza': {
+      const [ex, ey] = end(9);
+      thick(p, dark, hx, hy, ex, ey);
+      p.e('#8a8f98', ex, ey, 2, 2); p.r('#c8ccd4', ex - 1, ey - 1, 1, 1);
+      p.r('#5a5e68', ex - 3, ey, 1, 1); p.r('#5a5e68', ex + 3, ey, 1, 1); p.r('#5a5e68', ex, ey - 3, 1, 1);
       break;
-    case 'mazza':
-      if (pose === 'attack') { p.l(dark, hx, hy, hx - 7, hy - 5); p.e('#8a8f98', hx - 8, hy - 6, 2, 2); }
-      else { p.r(dark, hx - 1, hy - 9, 2, 10); p.e('#8a8f98', hx, hy - 10, 2, 2); }
+    }
+    case 'bastone': {
+      const [ex, ey] = end(14);
+      const bx = hx - dx * 7, bby = hy - dy * 7;
+      thick(p, wood, bx, bby, ex, ey);
+      p.l(shade(wood, 0.25), bx, bby, ex, ey);
+      p.r(gold, ex - 1, ey + 1, 3, 1);
+      p.e(glowCol, ex, ey - 1, pose === 'cast' ? 3 : 2, pose === 'cast' ? 3 : 2);
+      p.r('#ffffff', ex - 1, ey - 2, 1, 1);
       break;
-    case 'liuto':
-      if (pose === 'attack') { p.e('#a0682f', hx - 2, hy + 1, 3, 3); p.r('#5a3a1a', hx - 9, hy - 1, 7, 1); p.r('#ffe8a0', hx - 2, hy + 1, 1, 1); }
-      else { p.e('#a0682f', hx + 1, hy - 1, 3, 3); p.r('#5a3a1a', hx + 1, hy - 9, 1, 7); }
+    }
+    case 'arco': {
+      const drawn = pose === 'strike' || pose === 'low';
+      const bx = hx - 1;
+      p.l('#8a6a3a', bx, hy - 10, bx - 3, hy - 4); p.l('#8a6a3a', bx - 3, hy - 4, bx - 3, hy + 3); p.l('#8a6a3a', bx - 3, hy + 3, bx, hy + 9);
+      p.r('#c9a24a', bx - 3, hy - 1, 1, 2);
+      const sx = drawn ? bx + 5 : bx;
+      p.l('#e8e0c8', bx, hy - 10, sx, hy); p.l('#e8e0c8', sx, hy, bx, hy + 9);
+      if (drawn) { p.l(steel, sx, hy, bx - 9, hy); p.r('#e8e0c8', sx + 1, hy - 1, 1, 3); }
       break;
-    case 'lanterna':
-      if (pose === 'attack') { p.l(dark, hx, hy, hx - 4, hy - 6); p.r(gold, hx - 7, hy - 9, 4, 5); p.r('#fff2b0', hx - 6, hy - 8, 2, 3); }
-      else { p.r(dark, hx, hy, 1, 2); p.r(gold, hx - 2, hy + 2, 4, 5); p.r('#fff2b0', hx - 1, hy + 3, 2, 3); }
+    }
+    case 'liuto': {
+      const lx = pose === 'strike' || pose === 'low' ? hx + 1 : hx + 2, ly = hy - 1;
+      p.e('#a0682f', lx, ly, 3, 3); p.e('#c88a48', lx - 1, ly - 1, 1, 1); p.r('#2a1a10', lx, ly, 1, 1);
+      p.l('#5a3a1a', lx - 1, ly - 2, lx - 7, ly - 7); p.r('#e8d8b0', lx - 8, ly - 8, 2, 1);
+      if (pose === 'strike' || pose === 'cast') { p.r('#ffe8a0', lx - 4, ly - 6, 1, 1); p.r('#ffe8a0', lx + 4, ly - 4, 1, 1); p.r('#fff6d0', lx - 2, ly - 8, 1, 1); }
+      break;
+    }
+    case 'lanterna': {
+      const hang = pose === 'idle' || pose === 'guard';
+      const [ex, ey] = hang ? [hx, hy + 3] : end(6);
+      p.l(dark, hx, hy, ex, ey);
+      p.r(gold, ex - 2, ey, 5, 6); p.r('#fff2b0', ex - 1, ey + 1, 3, 4); p.r('#ffffff', ex, ey + 2, 1, 1);
+      p.r(shade(gold, -0.3), ex - 2, ey, 5, 1); p.r(shade(gold, -0.3), ex - 2, ey + 5, 5, 1);
+      break;
+    }
+  }
+}
+
+function hairBack(p, style, c, hx, hy, sway) {
+  const d = shade(c, -0.25);
+  switch (style) {
+    case 'lunghi': p.r(c, hx + 5, hy + 3, 5, 10); p.r(d, hx + 8, hy + 5, 2, 9); p.r(c, hx + 6 + (sway > 1 ? 1 : 0), hy + 13, 4, 2); break;
+    case 'coda': p.r(c, hx + 9, hy + 1, 2, 3); p.r(c, hx + 10 + (sway ? 1 : 0), hy + 4, 2, 6); p.r(d, hx + 11 + (sway ? 1 : 0), hy + 6, 1, 4); p.r(c, hx + 10 + sway, hy + 10, 1, 2); break;
+    case 'treccia':
+      for (let i = 0; i < 6; i++) p.r(i % 2 ? d : c, hx + 8 + (i > 3 && sway ? 1 : 0), hy + 5 + i * 2, 2, 2);
+      p.r('#c9a24a', hx + 8 + (sway ? 1 : 0), hy + 17, 2, 1); break;
+    case 'ricci': p.e(c, hx + 7, hy + 6, 3, 4); p.e(d, hx + 8, hy + 8, 2, 2); break;
+  }
+}
+function hairFront(p, style, c, hx, hy) {
+  const d = shade(c, -0.25), l = shade(c, 0.3);
+  const cap = () => { p.r(c, hx, hy - 1, 9, 3); p.r(c, hx + 6, hy + 1, 3, 4); p.r(c, hx, hy + 2, 2, 1); p.r(l, hx + 2, hy - 1, 4, 1); };
+  switch (style) {
+    case 'rasati': p.r(mix(c, '#888888', 0.2), hx, hy, 9, 1); p.r(shade(c, -0.1), hx + 7, hy + 1, 2, 2); break;
+    case 'cresta': p.r(shade(c, -0.4), hx + 1, hy, 7, 1); p.r(c, hx + 2, hy - 3, 6, 3); p.r(l, hx + 3, hy - 3, 3, 1); p.r(c, hx + 7, hy - 1, 2, 1); break;
+    case 'spettinati': cap(); p.r(c, hx + 1, hy - 2, 1, 1); p.r(c, hx + 4, hy - 2, 2, 1); p.r(c, hx + 7, hy - 2, 1, 1); p.r(c, hx - 1, hy + 1, 2, 2); p.r(c, hx + 2, hy + 2, 1, 1); break;
+    case 'ricci': p.e(c, hx + 4, hy, 6, 3); p.r(c, hx - 1, hy + 1, 3, 3); p.r(c, hx + 6, hy + 1, 3, 5); p.r(l, hx + 1, hy - 2, 1, 1); p.r(l, hx + 4, hy - 2, 1, 1); p.r(l, hx + 7, hy - 1, 1, 1); p.r(d, hx + 3, hy + 1, 1, 1); break;
+    case 'chignon': cap(); p.e(c, hx + 8, hy - 1, 2, 2); p.r(l, hx + 7, hy - 2, 1, 1); break;
+    case 'lunghi': cap(); p.r(c, hx - 1, hy + 1, 2, 4); break;
+    default: cap();
+  }
+}
+function drawBeard(p, kind, c, hx, hy) {
+  const d = shade(c, -0.2);
+  switch (kind) {
+    case 'corta': p.r(c, hx, hy + 6, 7, 3); p.r(d, hx + 1, hy + 8, 5, 1); p.r(shade(c, 0.15), hx + 1, hy + 7, 2, 1); break;
+    case 'lunga': p.r(c, hx, hy + 6, 7, 3); p.r(c, hx, hy + 9, 5, 3); p.r(c, hx + 1, hy + 12, 3, 1); p.r(d, hx + 2, hy + 10, 1, 2); break;
+    case 'baffi': p.r(c, hx - 1, hy + 7, 4, 1); p.r(d, hx - 1, hy + 8, 1, 1); break;
+    case 'pizzetto': p.r(c, hx, hy + 7, 3, 1); p.r(c, hx + 1, hy + 8, 2, 2); break;
+  }
+}
+function drawHeadwear(p, kind, cloth, trim, hx, hy, sway) {
+  const steel = '#8f96a0', steelL = '#c8ccd4';
+  switch (kind) {
+    case 'cappuccio': {
+      const c = cloth, d = shade(cloth, -0.3);
+      p.r(c, hx - 1, hy - 2, 11, 5); p.r(c, hx + 6, hy + 3, 4, 8); p.r(c, hx - 1, hy + 3, 2, 3);
+      p.r(d, hx + 8, hy + 4, 2, 7); p.r(shade(cloth, 0.2), hx + 1, hy - 2, 4, 1);
+      p.r(d, hx + 1, hy + 3, 6, 1); // ombra della tesa sul viso
+      p.r(c, hx + 9 + (sway > 1 ? 1 : 0), hy + 9, 2, 2);
+      break;
+    }
+    case 'elmo':
+      p.r(steel, hx - 1, hy - 2, 11, 4); p.r(steelL, hx + 1, hy - 2, 4, 1); p.r(trim, hx - 1, hy + 2, 11, 1);
+      p.r(steel, hx + 7, hy + 2, 3, 5); p.r(steel, hx + 1, hy + 3, 1, 3); p.r(shade(steel, -0.3), hx + 9, hy + 2, 1, 5);
+      p.r(trim, hx + 4, hy - 4, 2, 2);
+      break;
+    case 'cappello':
+      p.r(cloth, hx - 3, hy + 1, 15, 2); p.r(shade(cloth, -0.3), hx - 3, hy + 2, 15, 1);
+      p.tri(cloth, hx, hy + 1, hx + 9, hy + 1, hx + 6, hy - 7);
+      p.l(cloth, hx + 6, hy - 7, hx + 9 + (sway ? 1 : 0), hy - 8);
+      p.r(trim, hx, hy, 9, 1); p.r(shade(cloth, 0.2), hx + 3, hy - 3, 1, 3);
+      break;
+    case 'mitra':
+      p.r(cloth, hx + 1, hy - 4, 7, 6); p.r(shade(cloth, -0.15), hx + 6, hy - 3, 2, 5); p.r(cloth, hx + 2, hy - 5, 5, 1);
+      p.r(trim, hx + 4, hy - 4, 1, 5); p.r(trim, hx + 3, hy - 2, 3, 1); p.r(trim, hx, hy + 1, 9, 1);
+      break;
+    case 'piuma':
+      p.r(cloth, hx - 2, hy, 13, 2); p.r(cloth, hx + 1, hy - 3, 7, 3); p.r(trim, hx + 1, hy - 1, 7, 1);
+      p.l('#e3c06b', hx + 7, hy - 2, hx + 12, hy - 7); p.l('#fff2b0', hx + 8, hy - 2, hx + 13, hy - 6 + (sway ? 1 : 0));
+      break;
+    case 'corona':
+      p.r('#d9a83a', hx, hy + 1, 9, 1); p.r('#d9a83a', hx + 1, hy, 1, 1); p.r('#d9a83a', hx + 4, hy - 1, 1, 2); p.r('#d9a83a', hx + 7, hy, 1, 1);
+      p.r('#8fe3ff', hx + 4, hy, 1, 1); p.r('#fff2b0', hx + 2, hy + 1, 1, 1);
+      break;
+    case 'fascia':
+      p.r(trim, hx - 1, hy + 2, 10, 1); p.r(shade(trim, -0.3), hx - 1, hy + 3, 10, 1);
+      p.r(trim, hx + 9, hy + 3, 2, 1); p.r(trim, hx + 10 + (sway ? 1 : 0), hy + 4, 2, 1); p.r(trim, hx + 11 + sway, hy + 5, 1, 2);
+      break;
+    case 'benda':
+      p.l('#2a1a14', hx, hy + 2, hx + 8, hy + 4); p.r('#1a1014', hx, hy + 4, 3, 3);
+      break;
+    case 'fiore':
+      p.r('#ff8ab0', hx + 6, hy - 1, 3, 3); p.r('#ffb0c8', hx + 7, hy - 2, 1, 1); p.r('#ffb0c8', hx + 9, hy, 1, 1); p.r('#ffe45c', hx + 7, hy, 1, 1);
+      p.r('#3f7a3a', hx + 5, hy + 1, 1, 1);
       break;
   }
 }
 
-function drawHeroFrame(x, ox, hero, frame) {
+function drawHeroFrame(x, hero, f) {
   const cls = CLASSES[hero.cls];
   const L = cls.look;
-  const skin = hero.look?.skin || '#e0b48c', hair = hero.look?.hair || '#3a2a1a';
-  const cloak = L.cloak, trim = L.trim;
+  const look = { ...DEFAULT_LOOK, ...(hero.look || {}) };
+  const skin = look.skin, hair = look.hair;
+  const cloth = look.cloth || L.cloak, trim = L.trim;
   const tf = (hero.transforms || []).map((t) => TRANSFORMS[t]?.look);
-  const pose = frame === 2 ? 'attack' : frame === 3 ? 'hurt' : 'idle';
-  const by = frame === 1 ? 1 : 0; // respiro
-  const lean = pose === 'attack' ? -1 : pose === 'hurt' ? 2 : 0;
-  const p = new P(x, ox + lean, by);
-  const pl = new P(x, ox, 0); // gambe non respirano
+  const P0 = POSES[f];
+  const by = P0.by || 0, lean = P0.lean || 0, sway = P0.sway || 0;
+  const [lfx, lfy, lbx, lby] = P0.legs || [0, 0, 0, 0];
+  const p = new P(x, 0, 0);
   const wtype = hero.equip?.weapon ? ITEMS[hero.equip.weapon.base]?.wtype || cls.weapon : cls.weapon;
-  const dark = shade(cloak, -0.45);
-  const boots = '#3a2a22';
+  const glowCol = hero.cls === 'arcanista' ? '#8fe3ff' : hero.cls === 'custode' ? '#fff2b0' : '#ffd27a';
+  const outfit = L.outfit;
+  const longRobe = outfit === 'robe' || outfit === 'cleric';
+  const tx = 11 + lean, ty = 18 + by; // busto
+  const hx = 11 + lean, hy = 8 + by; // testa
+  const headwear = look.acc === 'classe' ? CLASS_HEADWEAR[hero.cls] : look.acc === 'nessuno' ? null : look.acc;
+  const hooded = headwear === 'cappuccio';
+  const boots = '#3a2a22', bootsL = '#5a4030';
+  const pants = outfit === 'plate' ? '#6a6e78' : outfit === 'hood' ? '#2a2630' : shade(cloth, -0.55);
+  const sleeve = tf.includes('glassArm') ? '#9fe8ff' : outfit === 'plate' ? '#a8aeb8' : outfit === 'hood' ? '#3a3440' : shade(cloth, -0.05);
+  const hand = tf.includes('glassArm') ? '#e8ffff' : skin;
+
   // ali di cenere
-  if (tf.includes('ashWings')) { p.tri('#6a6460', 20, 14, 30, 6, 27, 26); p.tri('#8a847c', 20, 16, 28, 10, 25, 24); }
-  // mantello dietro
-  if (L.outfit !== 'robe') { p.tri(shade(cloak, -0.25), 15, 18, 23, 19, 24, 34); p.r(shade(cloak, -0.35), 19, 20, 5, 13); }
-  if (L.lute) { p.e('#a0682f', 22, 26, 3, 4); p.r('#5a3a1a', 22, 15, 1, 9); }
-  if (L.quiver) { p.r('#6a4a2a', 20, 17, 3, 10); p.r('#e8e0c8', 20, 15, 1, 3); p.r('#e8e0c8', 22, 14, 1, 4); }
-  // gambe
-  if (L.outfit !== 'robe' && L.outfit !== 'cleric') {
-    const pants = L.outfit === 'plate' ? '#6a6e78' : shade(cloak, -0.5);
-    pl.r(pants, 12, 30, 3, 6); pl.r(pants, 16, 30, 3, 6);
-    pl.r(boots, 11, 35, 4, 3); pl.r(boots, 16, 35, 4, 3);
-  } else pl.r(boots, 12, 36, 7, 2);
-  // busto
-  switch (L.outfit) {
-    case 'plate':
-      p.r('#8f96a0', 11, 19, 10, 11); p.r('#b8bec8', 12, 20, 4, 6); p.r(cloak, 11, 28, 10, 3); p.r(trim, 11, 27, 10, 1);
-      p.e('#a8aeb8', 12, 20, 3, 2); break;
-    case 'hood':
-      p.r('#3a3440', 11, 19, 10, 11); p.r(cloak, 11, 19, 10, 3); p.r('#5a4a3a', 11, 26, 10, 1); p.r(trim, 15, 26, 2, 1); break;
-    case 'robe':
-      p.tri(cloak, 16, 18, 9, 37, 23, 37); p.r(cloak, 11, 19, 10, 8); p.r(trim, 15, 19, 2, 18); p.r(shade(cloak, 0.2), 12, 20, 3, 5); break;
-    case 'cleric':
-      p.tri(cloak, 16, 18, 9, 37, 23, 37); p.r(cloak, 11, 19, 10, 8); p.r(trim, 11, 26, 10, 1); p.r(trim, 15, 27, 2, 10); p.r(trim, 11, 19, 10, 1); break;
-    case 'coat':
-      p.r(cloak, 11, 19, 10, 12); p.r(trim, 15, 19, 2, 12); p.r(shade(cloak, 0.2), 12, 20, 2, 9); p.r('#e8e0c8', 14, 19, 4, 2); break;
-    case 'ranger':
-      p.r(cloak, 11, 19, 10, 11); p.r('#6a4a2a', 11, 26, 10, 2); p.r(trim, 15, 26, 2, 2); p.r(shade(cloak, 0.2), 12, 20, 3, 4); break;
+  if (tf.includes('ashWings')) { p.tri('#6a6460', tx + 9, ty - 4, tx + 19, ty - 12 + sway, tx + 16, ty + 8); p.tri('#8a847c', tx + 9, ty - 2, tx + 17, ty - 8 + sway, tx + 14, ty + 6); }
+  // capelli dietro
+  if (!hooded) hairBack(p, look.hairStyle, hair, hx, hy, sway);
+  // mantello dietro (oscilla)
+  if (!longRobe) {
+    p.tri(shade(cloth, -0.3), tx + 3, ty, tx + 10, ty, tx + 12 + sway, ty + 16 - (P0.kneel ? 3 : 0));
+    p.r(shade(cloth, -0.4), tx + 8, ty + 2, 3, 11);
   }
-  if (tf.includes('emberHeart')) { p.r('#ff7a2f', 14, 22, 2, 2); p.r('#ffe45c', 14, 22, 1, 1); }
-  if (tf.includes('saltSkin')) { p.r('#ffffff', 12, 24, 1, 1); p.r('#e8f4ff', 19, 21, 1, 1); }
+  if (L.quiver) { p.r('#6a4a2a', tx + 9, ty - 1, 3, 10); p.r('#e8e0c8', tx + 9, ty - 3, 1, 3); p.r('#e8e0c8', tx + 11, ty - 4, 1, 4); p.r('#c94a3a', tx + 10, ty - 3, 1, 1); }
+  if (L.lute && wtype !== 'liuto') { p.e('#a0682f', tx + 11, ty + 8, 3, 4); p.r('#5a3a1a', tx + 11, ty - 3, 1, 9); }
   // braccio posteriore
-  p.r(shade(L.outfit === 'plate' ? '#8f96a0' : cloak, -0.3), 20, 20, 2, 7);
-  // testa
-  p.r(skin, 11, 9, 9, 9);
-  p.r(shade(skin, -0.15), 18, 10, 2, 7);
-  // occhi (guarda a sinistra)
-  const eye = tf.includes('mothEye') ? '#d080ff' : '#1a1418';
-  p.r(eye, 12, 13, 1, 2); p.r(eye, 15, 13, 1, 2);
-  if (tf.includes('mothEye')) p.r('#ffffff', 12, 13, 1, 1);
-  p.r(shade(skin, -0.3), 11, 16, 2, 1);
-  if (tf.includes('scar')) p.l('#a03030', 14, 11, 16, 15);
-  // capelli / copricapo
-  switch (L.outfit) {
-    case 'hood':
-      p.r(cloak, 10, 7, 11, 4); p.r(cloak, 18, 9, 3, 9); p.r(cloak, 10, 8, 2, 4); p.r(shade(cloak, -0.3), 11, 15, 8, 3); break;
+  if (P0.armBUp) { p.r(shade(sleeve, -0.3), tx + 8, ty - 5, 2, 7); p.r(shade(hand, -0.2), tx + 8, ty - 7, 2, 2); }
+  else { const d = P0.armB || 0; p.r(shade(sleeve, -0.3), tx + 9 + d, ty + 1, 2, 7); p.r(shade(hand, -0.2), tx + 9 + d, ty + 8, 2, 2); }
+  // gambe
+  if (P0.kneel) {
+    p.r(pants, 8, 33, 7, 2); p.r(pants, 8, 35, 2, 2); p.r(boots, 6, 36, 4, 2);
+    p.r(pants, 15, 35, 5, 2); p.r(boots, 19, 35, 3, 3);
+  } else if (longRobe) {
+    p.r(boots, 12 + lfx, 36 + lfy, 4, 2); p.r(boots, 16 + lbx, 36 + lby, 4, 2);
+  } else {
+    p.r(shade(pants, -0.2), 16 + lbx, 30 + lby, 3, 6); p.r(shade(boots, -0.2), 16 + lbx, 35 + lby, 4, 3);
+    p.r(pants, 12 + lfx, 30 + lfy, 3, 6); p.r(boots, 11 + lfx, 35 + lfy, 4, 3); p.r(bootsL, 11 + lfx, 35 + lfy, 4, 1);
+    if (outfit === 'plate') p.r('#a8aeb8', 12 + lfx, 32 + lfy, 3, 1);
+  }
+  // busto / abito
+  const hem = P0.kneel ? 34 : 37;
+  switch (outfit) {
     case 'plate':
-      p.r(hair, 11, 7, 9, 3); p.r(hair, 18, 9, 2, 6); p.r('#8f96a0', 10, 7, 11, 2); p.r(trim, 10, 9, 11, 1); break;
+      p.r(cloth, tx + 2, ty + 9, 6, 6); p.r(trim, tx + 2, ty + 14, 6, 1); // tabarro
+      p.r('#8f96a0', tx, ty, 10, 11); p.r('#b8bec8', tx + 1, ty + 1, 4, 5); p.r('#6a707a', tx + 7, ty + 1, 2, 9);
+      p.r(cloth, tx + 3, ty + 4, 4, 6); p.r(trim, tx + 4, ty + 5, 2, 1);
+      p.r('#5a4030', tx, ty + 10, 10, 1); p.r(trim, tx + 4, ty + 10, 2, 1);
+      p.e('#a8aeb8', tx + 1, ty + 1, 3, 2); p.r('#dfe3ea', tx, ty, 2, 1);
+      break;
+    case 'hood':
+      p.r('#3a3440', tx, ty, 10, 11); p.r('#4a4250', tx + 1, ty + 1, 3, 6); p.r(cloth, tx, ty, 10, 3);
+      p.l('#5a4a3a', tx + 1, ty + 3, tx + 8, ty + 9); p.r('#5a4a3a', tx, ty + 9, 10, 2); p.r(trim, tx + 4, ty + 9, 2, 2);
+      p.r('#2a2630', tx, ty + 11, 10, 1);
+      break;
     case 'robe':
-      p.r(hair, 11, 8, 9, 3); p.r(hair, 18, 10, 3, 9);
-      if (L.hat) { p.r(cloak, 7, 7, 17, 2); p.tri(cloak, 11, 7, 20, 7, 22, -2 + 2); p.r(trim, 11, 6, 9, 1); }
+      p.tri(cloth, tx + 5, ty, tx - 3, hem, tx + 13, hem); p.r(cloth, tx, ty, 10, 9);
+      p.r(shade(cloth, -0.25), tx + 7, ty + 1, 3, hem - ty - 1);
+      p.r(trim, tx + 4, ty, 2, hem - ty); p.r(shade(cloth, 0.2), tx + 1, ty + 1, 3, 5);
+      p.r(trim, tx - 3, hem - 1, 16, 1); p.r('#5a4030', tx, ty + 8, 10, 1); p.r(trim, tx + 4, ty + 8, 2, 1);
       break;
     case 'cleric':
-      p.r(hair, 11, 7, 9, 3); p.r(hair, 18, 9, 3, 8); p.r(cloak, 10, 6, 11, 2); p.r(trim, 10, 7, 11, 1); break;
+      p.tri(cloth, tx + 5, ty, tx - 3, hem, tx + 13, hem); p.r(cloth, tx, ty, 10, 9);
+      p.r(shade(cloth, -0.18), tx + 7, ty + 1, 3, hem - ty - 1);
+      p.r(trim, tx + 1, ty, 2, hem - ty - 2); p.r(trim, tx + 6, ty, 2, hem - ty - 2); // stola
+      p.r(shade(trim, 0.3), tx + 1, ty + 2, 1, 1); p.r(trim, tx, ty, 10, 1); p.r(trim, tx - 3, hem - 1, 16, 1);
+      p.r('#fff2b0', tx + 4, ty + 3, 1, 3); p.r('#fff2b0', tx + 3, ty + 4, 3, 1);
+      break;
     case 'coat':
-      p.r(hair, 11, 7, 9, 3); p.r(hair, 18, 9, 3, 7); p.r(cloak, 9, 6, 13, 2); p.r(cloak, 11, 4, 9, 2); p.l('#e3c06b', 19, 4, 24, 0); p.l('#ffe8a0', 20, 4, 25, 1); break;
+      p.r(cloth, tx, ty, 10, 15); p.r(shade(cloth, -0.25), tx + 7, ty + 1, 3, 14); p.r(shade(cloth, 0.2), tx + 1, ty + 1, 2, 10);
+      p.r('#e8e0c8', tx + 3, ty, 3, 8); p.r('#c8c0a8', tx + 3, ty + 4, 3, 1);
+      p.r(trim, tx + 2, ty, 1, 15); p.r(trim, tx + 6, ty + 2, 1, 1); p.r(trim, tx + 6, ty + 5, 1, 1); p.r(trim, tx + 6, ty + 8, 1, 1);
+      p.r(trim, tx - 1, ty, 3, 2);
+      break;
     case 'ranger':
-      p.r(hair, 10, 7, 10, 3); p.r(hair, 17, 9, 4, 10); p.r(hair, 20, 15, 2, 6); p.r(cloak, 16, 17, 6, 2); break;
+      p.r(cloth, tx, ty, 10, 11); p.r(shade(cloth, -0.25), tx + 7, ty + 1, 3, 10); p.r(shade(cloth, 0.2), tx + 1, ty + 1, 3, 4);
+      p.r(shade(cloth, -0.35), tx - 1, ty, 12, 3); p.r(shade(cloth, -0.15), tx, ty, 10, 1);
+      p.r('#6a4a2a', tx, ty + 8, 10, 2); p.r(trim, tx + 4, ty + 8, 2, 2); p.l('#6a4a2a', tx + 1, ty + 3, tx + 8, ty + 8);
+      break;
   }
-  if (tf.includes('halo')) { p.r('#ffe45c', 10, 2, 11, 1); p.r('#fff2b0', 12, 1, 7, 1); }
-  // braccio anteriore + arma
-  const armC = tf.includes('glassArm') ? '#9fe8ff' : L.outfit === 'plate' ? '#a8aeb8' : shade(cloak, -0.1);
-  if (pose === 'attack') { p.r(armC, 6, 21, 6, 2); p.r(tf.includes('glassArm') ? '#e8ffff' : skin, 4, 21, 2, 3); }
-  else { p.r(armC, 9, 20, 2, 7); p.r(tf.includes('glassArm') ? '#e8ffff' : skin, 9, 27, 2, 2); }
-  drawWeapon(p, wtype, pose, hero.cls);
-  if (L.outfit === 'hood' && pose !== 'hurt') { p.r(shade(cloak, -0.2), 11, 15, 6, 2); }
+  if (tf.includes('emberHeart')) { p.r('#ff7a2f', tx + 3, ty + 3, 2, 2); p.r('#ffe45c', tx + 3, ty + 3, 1, 1); }
+  if (tf.includes('saltSkin')) { p.r('#ffffff', tx + 1, ty + 6, 1, 1); p.r('#e8f4ff', tx + 8, ty + 3, 1, 1); p.r('#ffffff', hx + 6, hy + 7, 1, 1); }
+  // collo e testa
+  p.r(shade(skin, -0.2), hx + 3, hy + 9, 4, 2);
+  p.r(skin, hx, hy, 9, 9); p.x.clearRect(hx, hy + 8, 1, 1); p.x.clearRect(hx + 8, hy + 8, 1, 1);
+  p.r(shade(skin, -0.16), hx + 7, hy + 1, 2, 7); p.r(shade(skin, -0.1), hx + 1, hy + 8, 6, 1);
+  p.r(skin, hx - 1, hy + 4, 1, 2); // naso
+  p.r(shade(skin, -0.12), hx + 6, hy + 4, 1, 2); p.r(shade(skin, -0.3), hx + 6, hy + 5, 1, 1); // orecchio
+  // occhi
+  const eyeC = tf.includes('mothEye') ? '#d080ff' : look.eyes;
+  const ey = hy + 4;
+  if (P0.blink) { p.r(shade(skin, -0.35), hx, ey + 1, 2, 1); p.r(shade(skin, -0.35), hx + 3, ey + 1, 2, 1); }
+  else if (P0.hurt) { p.l('#1a1418', hx, ey, hx + 1, ey + 1); p.l('#1a1418', hx + 3, ey, hx + 4, ey + 1); }
+  else {
+    p.r(eyeC, hx, ey, 1, 2); p.r('#f4ece4', hx + 1, ey, 1, 2);
+    p.r(eyeC, hx + 3, ey, 1, 2); p.r('#f4ece4', hx + 4, ey, 1, 2);
+    if (tf.includes('mothEye')) p.r('#ffffff', hx, ey, 1, 1);
+  }
+  p.r(shade(hair, -0.2), hx, ey - 1, 2, 1); p.r(shade(hair, -0.2), hx + 3, ey - 1, 2, 1); // sopracciglia
+  p.r(mix(skin, '#ff7070', 0.28), hx + 1, ey + 2, 2, 1); // guancia
+  p.r(P0.hurt ? '#5a1a1a' : shade(skin, -0.38), hx, hy + 7, 2, 1); // bocca
+  if (tf.includes('scar')) p.l('#a03030', hx + 3, hy + 2, hx + 5, hy + 6);
+  if (look.beard !== 'nessuna') drawBeard(p, look.beard, hair, hx, hy);
+  // capelli davanti e copricapo
+  if (!hooded) hairFront(p, headwear === 'elmo' ? 'rasati' : look.hairStyle, hair, hx, hy);
+  if (headwear) drawHeadwear(p, headwear, cloth, trim, hx, hy, sway);
+  if (tf.includes('halo')) { p.r('#ffe45c', hx, hy - 6, 9, 1); p.r('#fff2b0', hx + 2, hy - 7, 5, 1); }
+  // braccio anteriore + mano + arma
+  let H;
+  switch (P0.arm) {
+    case 'swing': { const s2 = P0.swing || 0; p.r(sleeve, tx - 2 + s2, ty + 1, 2, 7); p.r(hand, tx - 2 + s2, ty + 8, 2, 2); H = [tx - 2 + s2, ty + 8]; break; }
+    case 'back': thick(p, sleeve, tx + 1, ty + 1, tx + 5, ty - 3); p.r(hand, tx + 5, ty - 5, 2, 2); H = [tx + 5, ty - 4]; break;
+    case 'fwd': p.r(sleeve, tx - 5, ty + 2, 6, 2); p.r(hand, tx - 7, ty + 2, 2, 2); H = [tx - 7, ty + 2]; break;
+    case 'up': p.r(sleeve, tx - 3, ty - 4, 2, 6); p.r(hand, tx - 3, ty - 6, 2, 2); H = [tx - 3, ty - 6]; break;
+    case 'guard': p.r(sleeve, tx - 1, ty + 1, 2, 4); p.r(sleeve, tx - 4, ty + 4, 4, 2); p.r(hand, tx - 5, ty + 3, 2, 2); H = [tx - 5, ty + 3]; break;
+    case 'limp': p.r(sleeve, tx - 2, ty + 2, 2, 6); p.r(hand, tx - 3, ty + 8, 2, 2); H = [tx - 3, ty + 8]; break;
+    default: { const dy2 = P0.armDy || 0; p.r(sleeve, tx - 2, ty + 1, 2, 7 + dy2); p.r(hand, tx - 2, ty + 8 + dy2, 2, 2); H = [tx - 2, ty + 8 + dy2]; }
+  }
+  if (outfit === 'plate' && P0.arm !== 'limp') p.e('#b8bec8', tx, ty + 1, 2, 2);
+  drawWeapon(p, wtype, P0.wpn, H, glowCol);
+  if (P0.glow) {
+    const [gx, gy] = H;
+    for (const [ox, oy] of [[-3, -2], [2, -3], [-1, -5], [3, 1], [-4, 1]]) p.r(glowCol, gx + ox, gy + oy, 1, 1);
+    p.r('#ffffff', gx, gy - 3, 1, 1);
+  }
 }
 
+export function heroKey(hero) { return JSON.stringify([hero.cls, hero.look, hero.transforms, hero.equip?.weapon?.base]); }
 const heroCache = new Map();
 export function heroSheet(hero) {
-  const key = JSON.stringify([hero.cls, hero.look, hero.transforms, hero.equip?.weapon?.base]);
+  const key = heroKey(hero);
   if (heroCache.has(key)) return heroCache.get(key);
-  const [c, x] = canvas(HERO_W * 4, HERO_H);
-  for (let f = 0; f < 4; f++) {
+  const [c, x] = canvas(HERO_W * HERO_FRAMES, HERO_H);
+  for (let f = 0; f < HERO_FRAMES; f++) {
     const [fc, fx] = canvas(HERO_W, HERO_H);
-    drawHeroFrame(fx, 0, hero, f);
+    drawHeroFrame(fx, hero, f);
     finish(fx, HERO_W, HERO_H);
     let out = fc;
-    if (f === 3) out = tint(fc, '#ff3030', 0.35);
+    if (POSES[f].hurt) out = tint(fc, '#ff3030', 0.35);
+    if (POSES[f].kneel) out = tint(fc, '#20182a', 0.25);
     x.drawImage(out, f * HERO_W, 0);
   }
+  if (heroCache.size > 60) heroCache.clear();
   heroCache.set(key, c);
   return c;
 }
 const urlCache = new Map();
 function memo(key, fn) { if (!urlCache.has(key)) { if (urlCache.size > 400) urlCache.clear(); urlCache.set(key, fn()); } return urlCache.get(key); }
 export function heroPortrait(hero, scale = 3) {
-  return memo('hp' + scale + JSON.stringify([hero.cls, hero.look, hero.transforms, hero.equip?.weapon?.base]), () => heroPortraitRaw(hero, scale));
+  return memo('hp' + scale + heroKey(hero), () => heroPortraitRaw(hero, scale));
 }
 function heroPortraitRaw(hero, scale) {
   const sheet = heroSheet(hero);
-  const [c, x] = canvas(20 * scale, 20 * scale);
+  const [c, x] = canvas(22 * scale, 22 * scale);
   x.imageSmoothingEnabled = false;
-  x.drawImage(sheet, 6, 2, 20, 20, 0, 0, 20 * scale, 20 * scale);
+  x.drawImage(sheet, 4, 1, 22, 22, 0, 0, 22 * scale, 22 * scale);
   return c.toDataURL();
 }
 export function heroFull(hero, scale = 3) {
-  return memo('hf' + scale + JSON.stringify([hero.cls, hero.look, hero.transforms, hero.equip?.weapon?.base]), () => heroFullRaw(hero, scale));
+  return memo('hf' + scale + heroKey(hero), () => heroFullRaw(hero, scale));
 }
 function heroFullRaw(hero, scale) {
   const sheet = heroSheet(hero);
@@ -254,6 +458,16 @@ function heroFullRaw(hero, scale) {
   x.imageSmoothingEnabled = false;
   x.drawImage(sheet, 0, 0, HERO_W, HERO_H, 0, 0, HERO_W * scale, HERO_H * scale);
   return c.toDataURL();
+}
+// Striscia di fotogrammi per animare un'anteprima via CSS (steps)
+export function heroStrip(hero, frames, scale = 4) {
+  return memo('hs' + scale + frames.join(',') + heroKey(hero), () => {
+    const sheet = heroSheet(hero);
+    const [c, x] = canvas(HERO_W * scale * frames.length, HERO_H * scale);
+    x.imageSmoothingEnabled = false;
+    frames.forEach((f, i) => x.drawImage(sheet, f * HERO_W, 0, HERO_W, HERO_H, i * HERO_W * scale, 0, HERO_W * scale, HERO_H * scale));
+    return c.toDataURL();
+  });
 }
 
 // ================= NEMICI =================

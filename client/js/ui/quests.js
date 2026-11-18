@@ -1,5 +1,6 @@
 // Diario delle missioni: obiettivo principale dell'atto + obiettivi secondari, calcolati dallo stato
 import { STORY, STORY_EVENTS } from '/shared/data/story.js';
+import { TUTORIAL_STORY, TUTORIAL_GOALS } from '/shared/data/tutorial.js';
 import { hexDist, hkey } from '/shared/rules.js';
 import { esc } from './util.js';
 
@@ -26,25 +27,25 @@ function arrow(from, to) {
 }
 
 export function questList(s) {
-  const st = STORY[s.act];
+  const st = s.tutorial ? TUTORIAL_STORY : STORY[s.act];
   if (!st || !s.map) return null;
   const tiles = Object.values(s.map.tiles);
   const steps = [];
   for (const n of st.nodes) {
     const t = tiles.find((x) => x.poi?.id === n.id);
-    steps.push({ id: n.id, text: GOALS[n.id] || STORY_EVENTS[n.id]?.title, tile: t, done: !!t?.poi?.done });
+    steps.push({ id: n.id, text: GOALS[n.id] || TUTORIAL_GOALS[n.id] || STORY_EVENTS[n.id]?.title, tile: t, done: !!t?.poi?.done });
   }
   const bossId = st.boss(s.flags || {});
   const bt = s.map.tiles[hkey(s.map.boss.q, s.map.boss.r)];
   const pending = steps.some((x) => !x.done);
-  steps.push({ id: bossId, text: GOALS[bossId] || STORY_EVENTS[bossId]?.title, tile: bt, done: false, boss: true, locked: pending });
+  steps.push({ id: bossId, text: GOALS[bossId] || TUTORIAL_GOALS[bossId] || STORY_EVENTS[bossId]?.title, tile: bt, done: false, boss: true, locked: pending });
   const cur = steps.find((x) => !x.done && !x.locked);
   const side = [];
   const beacons = tiles.filter((t) => t.poi?.t === 'beacon');
   if (beacons.length) side.push({ text: 'Accendi i Fari per respingere la Cenere', prog: `${beacons.filter((t) => t.poi.lit).length}/${beacons.length}`, done: beacons.every((t) => t.poi.lit), tile: nearest(s, beacons.filter((t) => !t.poi.lit && t.rev)) });
   const crystals = tiles.filter((t) => t.poi?.t === 'crystal');
   if (crystals.length) side.push({ text: 'Risveglia il Cristallo Spento', prog: `${crystals.filter((t) => t.poi.done).length}/${crystals.length}`, done: crystals.every((t) => t.poi.done), tile: nearest(s, crystals.filter((t) => !t.poi.done && t.rev)) });
-  return { title: ACT_QUEST[s.act], steps, cur, side };
+  return { title: s.tutorial ? 'Tutorial: la prova dei Viandanti' : ACT_QUEST[s.act], steps, cur, side };
 }
 
 function nearest(s, list) {

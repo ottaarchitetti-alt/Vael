@@ -53,10 +53,35 @@ export const TRANSFORMS = {
 
 export const HERO_NAMES = ['Aldric', 'Mirela', 'Tobin', 'Seraphine', 'Caius', 'Ilse', 'Doran', 'Vesna', 'Oren', 'Liora', 'Bram', 'Nerys', 'Ezio', 'Agathe', 'Ruvo', 'Selka', 'Ambra', 'Corvin', 'Isotta', 'Feor'];
 
+// Aspetto personalizzabile degli eroi (editor nella lobby)
 export const LOOK = {
-  skin: ['#f2d3b3', '#e0b48c', '#c58e62', '#8d5a3b', '#5e3a26', '#d9c4e8'],
-  hair: ['#2a1d17', '#6b3e1f', '#c98b3a', '#e8d27a', '#d9d9d9', '#8b1e2b', '#3b4f8a', '#1e1e28'],
+  skin: ['#f6dcc0', '#f2d3b3', '#e0b48c', '#c58e62', '#a8714a', '#8d5a3b', '#5e3a26', '#d9c4e8', '#b8d0c0'],
+  hair: ['#2a1d17', '#4a2e1c', '#6b3e1f', '#a0582a', '#c98b3a', '#e8d27a', '#f0ead8', '#d9d9d9', '#8b1e2b', '#c0405a', '#3b4f8a', '#4a8a6a', '#7a4aa0', '#1e1e28'],
+  eyes: ['#1a1418', '#5a3a1e', '#3b6ea8', '#3f7a3a', '#8a8f98', '#c9a24a', '#9a2a2a', '#9a5ad8'],
+  cloth: ['', '#8a2b2b', '#b8532a', '#c9a24a', '#3f5b2e', '#2f6a6a', '#2b4f8a', '#4a3a8a', '#6b3a6e', '#2d2a3a', '#5a4a3a', '#e8e0c8'],
 };
+export const HAIR_STYLES = {
+  corti: 'Corti', spettinati: 'Spettinati', lunghi: 'Lunghi', coda: 'Coda', treccia: 'Treccia', ricci: 'Ricci', cresta: 'Cresta', chignon: 'Chignon', rasati: 'Rasati',
+};
+export const BEARDS = { nessuna: 'Nessuna', corta: 'Corta', lunga: 'Lunga', baffi: 'Baffi', pizzetto: 'Pizzetto' };
+export const ACCESSORIES = {
+  classe: 'Della classe', nessuno: 'Nessuno', cappuccio: 'Cappuccio', elmo: 'Elmo', cappello: 'Cappello a punta', corona: 'Diadema', fascia: 'Fascia', benda: "Benda sull'occhio", fiore: 'Fiore',
+};
+export const DEFAULT_LOOK = { skin: '#e0b48c', hair: '#4a2e1c', hairStyle: 'corti', eyes: '#1a1418', beard: 'nessuna', cloth: '', acc: 'classe' };
+
+// Normalizza un aspetto ricevuto dal client: solo valori ammessi
+export function cleanLook(l = {}) {
+  const pick = (v, list, d) => (list.includes(v) ? v : d);
+  return {
+    skin: pick(l.skin, LOOK.skin, DEFAULT_LOOK.skin),
+    hair: pick(l.hair, LOOK.hair, DEFAULT_LOOK.hair),
+    hairStyle: pick(l.hairStyle, Object.keys(HAIR_STYLES), DEFAULT_LOOK.hairStyle),
+    eyes: pick(l.eyes, LOOK.eyes, DEFAULT_LOOK.eyes),
+    beard: pick(l.beard, Object.keys(BEARDS), DEFAULT_LOOK.beard),
+    cloth: pick(l.cloth, LOOK.cloth, DEFAULT_LOOK.cloth),
+    acc: pick(l.acc, Object.keys(ACCESSORIES), DEFAULT_LOOK.acc),
+  };
+}
 
 export const BONDS = {
   amici: { name: 'Amici', icon: '🤝', desc: 'Concerto disponibile, +5% danni se combattono insieme.' },

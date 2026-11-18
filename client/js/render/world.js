@@ -1,6 +1,6 @@
 // Diorama esagonale HD-2D della mappa di viaggio
 import { THREE, PixelSprite, texFromCanvas } from './engine.js';
-import { tileTexture, sideTexture, decor, poiIcon, heroSheet, HERO_W, HERO_H, glowTexture } from './pixel.js';
+import { tileTexture, sideTexture, decor, poiIcon, heroSheet, HERO_W, HERO_H, HERO_FRAMES, HERO_ANIM, glowTexture } from './pixel.js';
 import { BIOMES, ACTS } from '/shared/data/mythic.js';
 import { hkey, neighbors } from '/shared/rules.js';
 
@@ -301,7 +301,7 @@ export class WorldView {
     if (key !== this.partyKey) {
       for (const sp of this.partySprites) { this.scene.remove(sp); sp.dispose(); }
       this.partySprites = heroes.map((h, i) => {
-        const sp = new PixelSprite(heroSheet(h), HERO_W, HERO_H, 4, PX * 1.05, { shadow: true });
+        const sp = new PixelSprite(heroSheet(h), HERO_W, HERO_H, HERO_FRAMES, PX * 1.05, { shadow: true });
         sp.userData.offset = new THREE.Vector3([-0.28, 0.25, -0.05, 0.42][i] || 0, 0, [0.1, 0.25, -0.25, -0.1][i] || 0);
         sp.userData.phase = i * 0.7;
         this.scene.add(sp);
@@ -350,13 +350,16 @@ export class WorldView {
   update(dt, t) {
     // party
     if (this.partyGoal && this.partyPos) {
+      const dx = this.partyGoal.x - this.partyPos.x;
+      const moving = this.partyPos.distanceTo(this.partyGoal) > 0.05;
+      if (Math.abs(dx) > 0.04) this.facing = dx > 0 ? -1 : 1; // lo sprite guarda a sinistra: a destra si specchia
       this.partyPos.lerp(this.partyGoal, Math.min(1, dt * 4));
       this.partySprites.forEach((sp, i) => {
         sp.position.copy(this.partyPos).add(sp.userData.offset);
-        const ph = t * 2.2 + sp.userData.phase;
-        sp.setFrame(Math.floor(ph) % 2);
-        const moving = this.partyPos.distanceTo(this.partyGoal) > 0.05;
-        sp.mesh.position.y = moving ? Math.abs(Math.sin(t * 12 + i)) * 0.08 : 0;
+        const anim = moving ? HERO_ANIM.walk : HERO_ANIM.idle;
+        sp.setFrame(anim[Math.floor(t * (moving ? 10 : 4) + sp.userData.phase * 3) % anim.length]);
+        sp.mesh.scale.x = this.facing || 1;
+        sp.mesh.position.y = moving ? Math.abs(Math.sin(t * 10 + i)) * 0.06 : 0;
       });
       if (this.follow) this.camTarget.lerp(this.partyPos, Math.min(1, dt * 3));
     }

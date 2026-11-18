@@ -342,3 +342,88 @@ body[data-phase="lobby"] #quests, body[data-phase="combat"] #quests { display: n
 .quests span.q-where { color: var(--muted); padding-top: 2px; }
 .quests .q-cur { margin-top: 5px; display: flex; gap: 6px; align-items: center; justify-content: space-between; color: #fff3d6; }
 @media (max-width: 1100px) { #quests { width: 240px; } }
+
+/* ---------- dadi del cammino: un eroe alla volta ---------- */
+.pdie { transition: opacity .2s, transform .2s, box-shadow .2s; }
+.pdie.cur { border-color: var(--gold2); box-shadow: 0 0 0 1px var(--gold2), 0 0 18px rgba(255,200,100,.35); transform: translateY(-3px); }
+.pdie.wait { opacity: .55; }
+.pd-val { position: relative; }
+.pd-bonus { position: absolute; right: -16px; top: -6px; font-family: var(--pixel); font-size: .8rem; color: #8cf0a4; background: #12301a; border: 1px solid #8cf0a4; border-radius: 8px; padding: 0 4px; }
+.pd-done { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: .82rem; }
+.pd-done b { font-family: var(--pixel); color: var(--gold2); }
+button.small { padding: 2px 8px; font-size: .72rem; }
+.jf i { font-style: normal; font-family: var(--pixel); font-size: .62rem; color: #8cf0a4; margin-left: 2px; }
+
+/* ---------- HUD: gruppo in basso ---------- */
+:root { --party-h: 86px; }
+#party { left: 50%; top: auto; bottom: 8px; transform: translateX(-50%); width: auto; max-width: calc(100vw - 20px); flex-direction: row; gap: 8px; align-items: flex-end; z-index: 3; }
+.hcard { width: 220px; padding: 6px 8px; align-items: center; gap: 8px; background: linear-gradient(rgba(22,16,32,.94), rgba(12,9,18,.94)); border-left: 1px solid var(--line); border-bottom: 3px solid var(--pc); }
+.hcard:hover { transform: translateY(-3px); }
+.hcard.active { transform: translateY(-8px); }
+.hcard.low .bar.hp { animation: pulse 1s infinite; }
+.hc-face { position: relative; flex: none; }
+.hcard .portrait { width: 52px; height: 52px; }
+.hc-face .lvup { position: absolute; left: -4px; top: -6px; margin: 0; background: #12301a; border: 1px solid #8cf0a4; border-radius: 8px; padding: 0 3px; font-size: .7rem; }
+.hc-name { font-size: .86rem; } .hc-name small { color: var(--muted); font-family: var(--pixel); font-size: .7rem; }
+.hc-bars { display: grid; grid-template-columns: 20px 1fr; align-items: center; column-gap: 4px; row-gap: 2px; margin-top: 3px; }
+.hc-bars label { font-family: var(--pixel); font-size: .6rem; color: var(--muted); }
+.hc-bars .bar { margin: 0; height: 13px; } .hc-bars .bar span { line-height: 13px; font-size: .66rem; }
+.hc-st { display: flex; gap: 2px; font-size: .8rem; margin-top: 2px; }
+.hc-turn { position: absolute; top: -11px; left: 50%; transform: translateX(-50%); font-family: var(--title); font-size: .65rem; letter-spacing: .1em; text-transform: uppercase; color: #1a1020; background: var(--gold2); border-radius: 8px; padding: 0 8px; }
+.chg { color: #ffd27a; }
+#bottom .travel { bottom: calc(var(--party-h) + 16px); }
+.cmd { bottom: calc(var(--party-h) + 16px); }
+#logpanel { height: 260px; }
+#quests { top: 334px; }
+@media (max-width: 1100px) {
+  .hcard { width: 170px; } .hcard .portrait { width: 40px; height: 40px; }
+  #party { width: auto; }
+}
+@media (max-width: 760px) {
+  :root { --party-h: 64px; }
+  .hcard { width: 120px; padding: 4px; gap: 4px; } .hc-cls, .hc-st { display: none; }
+  .hcard .portrait { width: 28px; height: 28px; }
+  #bottom .travel { min-width: 0; width: calc(100vw - 20px); }
+}
+
+/* ---------- editor dell'aspetto ---------- */
+.anim-preview { width: var(--w); height: var(--h); background-repeat: no-repeat; background-size: var(--sw) var(--h); image-rendering: pixelated; animation: hero-strip var(--dur) steps(var(--n)) infinite; margin: 0 auto; filter: drop-shadow(0 6px 4px rgba(0,0,0,.5)); }
+@keyframes hero-strip { from { background-position: 0 0; } to { background-position: calc(var(--sw) * -1) 0; } }
+.preview { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.anim-btns { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; max-width: 200px; }
+.look-ed { display: flex; flex-direction: column; gap: 5px; margin: 6px 0; }
+.look-ed .sw-row { align-items: flex-start; } .look-ed .sw-row > div { display: flex; flex-wrap: wrap; gap: 4px; flex: 1; }
+.look-ed .sw-row > span { width: 72px; flex: none; padding-top: 3px; }
+.chip { padding: 2px 8px; font-size: .72rem; border-radius: 10px; }
+.sw-cls { color: #fff; font-size: .6rem; line-height: 22px; }
+
+/* ---------- menu principale ---------- */
+.title-menu .menu-panel { width: 460px; }
+.mode-list { display: flex; flex-direction: column; gap: 8px; }
+.mode-card { display: flex; align-items: center; gap: 14px; text-align: left; padding: 12px 14px; }
+.mode-card .mi { font-size: 1.9rem; }
+.mode-card .mt { display: flex; flex-direction: column; gap: 2px; }
+.mode-card b { font-size: 1rem; color: var(--gold2); }
+.mode-card small { font-family: var(--serif); font-size: .82rem; letter-spacing: 0; color: #cfc2a8; text-transform: none; }
+.lobby-head { position: relative; }
+.back-menu { position: absolute; left: 0; top: 8px; }
+
+/* ---------- guida del tutorial ---------- */
+#coach { position: fixed; left: 10px; top: 66px; width: 320px; z-index: 4; pointer-events: auto; }
+body[data-phase="lobby"] #coach { display: none; }
+.coach { background: linear-gradient(rgba(34,26,14,.95), rgba(20,14,10,.95)); border: 1px solid var(--gold); border-radius: 8px; padding: 8px 12px 10px; box-shadow: 0 6px 24px rgba(0,0,0,.5); font-size: .9rem; }
+.coach.has-tip { box-shadow: 0 0 0 1px var(--gold2), 0 0 24px rgba(255,190,90,.3); animation: appear .3s; }
+.coach-head { display: flex; align-items: center; gap: 8px; font-family: var(--title); color: var(--gold2); }
+.coach-head small { color: var(--muted); font-family: var(--serif); margin-left: auto; }
+.coach.min { padding: 0; background: none; border: 0; box-shadow: none; }
+.coach.min .coach-head { padding: 4px 10px; }
+.coach-tip h4 { margin-top: 6px; }
+.coach-tip p { margin: 4px 0 8px; line-height: 1.35; }
+.coach-idle { margin: 6px 0; }
+.coach-list summary { cursor: pointer; color: var(--gold); font-family: var(--title); font-size: .78rem; margin-top: 6px; }
+.coach-list ul { list-style: none; padding: 0; margin: 4px 0 0; columns: 2; font-size: .78rem; }
+.coach-list li.done { color: var(--muted); }
+button.linkish { background: none; border: 0; box-shadow: none; padding: 1px 0; font-family: var(--serif); font-size: .8rem; letter-spacing: 0; text-align: left; }
+button.linkish:hover:not(:disabled) { background: none; transform: none; color: var(--gold2); }
+
+#logpanel:empty { display: none; }

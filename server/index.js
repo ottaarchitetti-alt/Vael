@@ -45,6 +45,7 @@ io.on('connection', (socket) => {
     const isHost = msg.hostKey === HOST_KEY;
     const known = msg.token && Object.values(game.players).find((p) => p.token === msg.token);
     if (!isHost && !known && String(msg.code || '').toUpperCase() !== ROOM_CODE) return ack?.({ ok: false, error: 'Codice stanza errato' });
+    if (!isHost && !known && game.mode === 'local') return ack?.({ ok: false, error: "L'host sta giocando una campagna locale: chiedigli di scegliere «Campagna online» per farti entrare." });
     if (!isHost && !known && Object.values(game.players).filter((p) => p.connected).length >= 6) return ack?.({ ok: false, error: 'Stanza piena' });
     player = game.addPlayer({ name: String(msg.name || '').trim(), token: msg.token, isHost: isHost || known?.isHost });
     socketsByPlayer.set(player.id, socket);
