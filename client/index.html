@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ceneri di Vael</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Pixelify+Sans:wght@400;600&family=EB+Garamond:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+  <script type="importmap">
+    { "imports": { "three": "/vendor/three/build/three.module.js", "three/addons/": "/vendor/three/examples/jsm/" } }
+  </script>
+</head>
+<body>
+  <canvas id="gl"></canvas>
+  <div id="overlay3d"></div>
+  <div id="ui">
+    <div id="hud"></div>
+    <div id="party"></div>
+    <div id="logpanel"></div>
+    <div id="quests"></div>
+    <div id="bottom"></div>
+    <div id="center"></div>
+    <div id="combatui"></div>
+    <div id="modal"></div>
+    <div id="dice"></div>
+    <div id="toasts"></div>
+  </div>
+  <div id="loading"><div class="ld-title">Ceneri di Vael</div><div class="ld-sub">Il sole è spezzato. Accendete le lanterne...</div></div>
+  <script src="/socket.io/socket.io.js"></script>
+  <script type="module" src="/js/main.js"></script>
+</body>
+</html>

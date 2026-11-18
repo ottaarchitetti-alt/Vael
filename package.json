@@ -1,0 +1,19 @@
+{
+  "name": "ceneri-di-vael",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server/index.js",
+    "host": "node server/index.js --tunnel",
+    "test": "node --test tests/"
+  },
+  "dependencies": {
+    "express": "^5.3.0",
+    "socket.io": "^4.8.4",
+    "three": "^0.187.0"
+  },
+  "optionalDependencies": {
+    "localtunnel": "^2.0.2"
+  }
+}
