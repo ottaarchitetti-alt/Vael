@@ -9,14 +9,18 @@ import { hkey, neighbors } from '/shared/rules.js';
 const SQ3 = Math.sqrt(3);
 const PX = 0.046; // dimensione di un pixel in unità mondo
 // le caselle inesplorate mantengono la loro altezza (un po' ribassata): si intuisce la forma del mondo
-export const tileTop = (t) => (t.rev ? 0.08 + t.h * 0.5 : 0.06 + t.h * 0.42);
-export const hexPos = (q, r) => new THREE.Vector3(SQ3 * (q + r / 2), 0, 1.5 * r);
+// Mappa in scala: caselle, rilievi e distanze sono S volte più grandi, gli eroi restano della stessa misura.
+// Gli oggetti (alberi, case, rocce) crescono di DS: una casa è circa il doppio di un eroe.
+export const S = 5;
+const DS = 3;
+export const tileTop = (t) => (t.rev ? 0.08 + t.h * 0.5 : 0.06 + t.h * 0.42) * S;
+export const hexPos = (q, r) => new THREE.Vector3(SQ3 * (q + r / 2) * S, 0, 1.5 * r * S);
 // Visuale isometrica: camera ortografica ruotata di 45° attorno alla verticale e inclinata di ~35°
 // L'angolo orizzontale (yaw) si può ruotare: Q/E a scatti di 90°, tasto destro trascinato per la rotazione libera
 let YAW = Math.PI / 4;
 export const mapYaw = () => YAW;
 const ISO_PITCH = Math.atan(1 / Math.SQRT2);
-const CAM_DIST = 24;
+const CAM_DIST = 24 * S;
 const RIGHT = new THREE.Vector3(); // destra dello schermo sul terreno
 const DOWN = new THREE.Vector3(); // basso dello schermo sul terreno
 function setYaw(y) {
@@ -34,11 +38,13 @@ export class WorldView {
   constructor(engine) {
     this.engine = engine;
     this.scene = new THREE.Scene();
-    this.camera = new THREE.OrthographicCamera(-10, 10, 6, -6, 0.5, 120);
+    this.camera = new THREE.OrthographicCamera(-10, 10, 6, -6, 0.5, 900);
     this.tilt = { focus: 0.5, band: 0.13, amount: 3.0 };
     this.target = new THREE.Vector3();
     this.camTarget = new THREE.Vector3();
-    this.dist = 19;
+    this.dist = 30;
+    this.occRay = new THREE.Raycaster();
+    this.faded = new Set(); // oggetti resi trasparenti perché coprono gli eroi
     this.yaw = this.yawGoal = YAW;
     this.animated = new Set(); // fiamme e cristalli che si animano
     this.tiles = new Map(); // key -> {group, mesh, decor[], poi}
@@ -61,43 +67,43 @@ export class WorldView {
     this.sun = new THREE.DirectionalLight('#ffd8b0', 2.0);
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
-    const sc = this.sun.shadow.camera; sc.left = -16; sc.right = 16; sc.top = 16; sc.bottom = -16; sc.near = 1; sc.far = 80;
+    const sc = this.sun.shadow.camera; sc.left = -40; sc.right = 40; sc.top = 40; sc.bottom = -40; sc.near = 1; sc.far = 400;
     this.sun.shadow.bias = -0.0008;
     this.sun.shadow.normalBias = 0.02;
     s.add(this.sun); s.add(this.sun.target);
     s.add(new THREE.AmbientLight('#4a3a5a', 0.6));
     // pool di luci puntiformi (lanterne, fuochi, fari)
-    for (let i = 0; i < 8; i++) { const l = new THREE.PointLight('#ffb547', 0, 7, 1.6); s.add(l); this.lights.push(l); }
+    for (let i = 0; i < 8; i++) { const l = new THREE.PointLight('#ffb547', 0, 7 * S, 1.6); s.add(l); this.lights.push(l); }
     // mare di nebbia sotto il diorama
-    const mist = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshBasicMaterial({ color: '#1a1424' }));
-    mist.rotation.x = -Math.PI / 2; mist.position.y = -0.7;
+    const mist = new THREE.Mesh(new THREE.PlaneGeometry(400 * S, 400 * S), new THREE.MeshBasicMaterial({ color: '#1a1424' }));
+    mist.rotation.x = -Math.PI / 2; mist.position.y = -0.7 * S;
     s.add(mist); this.mist = mist;
     // particelle: cenere che cade
-    const N = 500;
+    const N = 1400, SP = S * 0.6;
     const pos = new Float32Array(N * 3);
-    for (let i = 0; i < N; i++) { pos[i * 3] = (Math.random() - 0.5) * 40; pos[i * 3 + 1] = Math.random() * 12; pos[i * 3 + 2] = (Math.random() - 0.5) * 30; }
+    for (let i = 0; i < N; i++) { pos[i * 3] = (Math.random() - 0.5) * 40 * SP; pos[i * 3 + 1] = Math.random() * 12 * SP; pos[i * 3 + 2] = (Math.random() - 0.5) * 30 * SP; }
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     this.ash = new THREE.Points(g, new THREE.PointsMaterial({ color: '#c8b8c8', size: 0.07, transparent: true, opacity: 0.7, depthWrite: false }));
     s.add(this.ash);
     // lucciole
-    const F = 70, fp = new Float32Array(F * 3);
-    for (let i = 0; i < F; i++) { fp[i * 3] = (Math.random() - 0.5) * 30; fp[i * 3 + 1] = 0.5 + Math.random() * 2; fp[i * 3 + 2] = (Math.random() - 0.5) * 22; }
+    const F = 180, fp = new Float32Array(F * 3);
+    for (let i = 0; i < F; i++) { fp[i * 3] = (Math.random() - 0.5) * 30 * S * 0.6; fp[i * 3 + 1] = 0.5 + Math.random() * 2; fp[i * 3 + 2] = (Math.random() - 0.5) * 22 * S * 0.6; }
     const fg = new THREE.BufferGeometry(); fg.setAttribute('position', new THREE.BufferAttribute(fp, 3));
     this.flies = new THREE.Points(fg, new THREE.PointsMaterial({ map: texFromCanvas(glowTexture('#ffe89a')), color: '#ffe89a', size: 0.35, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
     s.add(this.flies);
     this.flyPhase = Array.from({ length: F }, () => Math.random() * 10);
     // evidenziazione esagoni
-    const ringGeo = new THREE.RingGeometry(0.82, 0.98, 6); ringGeo.rotateX(-Math.PI / 2); ringGeo.rotateY(Math.PI / 6);
+    const ringGeo = new THREE.RingGeometry(0.82 * S, 0.98 * S, 6); ringGeo.rotateX(-Math.PI / 2); ringGeo.rotateY(Math.PI / 6);
     this.hoverRing = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: '#ffe8a0', transparent: true, opacity: 0.9, depthWrite: false }));
     // anello dell'eroe di turno
     const aGeo = new THREE.RingGeometry(0.3, 0.42, 24); aGeo.rotateX(-Math.PI / 2);
     this.activeRing = new THREE.Mesh(aGeo, new THREE.MeshBasicMaterial({ color: '#ffb547', transparent: true, opacity: 0.9, depthWrite: false }));
     this.activeRing.visible = false;
     this.hoverRing.visible = false; s.add(this.hoverRing); s.add(this.activeRing);
-    const hexGeo = new THREE.CircleGeometry(0.9, 6); hexGeo.rotateX(-Math.PI / 2); hexGeo.rotateY(Math.PI / 6);
+    const hexGeo = new THREE.CircleGeometry(0.9 * S, 6); hexGeo.rotateX(-Math.PI / 2); hexGeo.rotateY(Math.PI / 6);
     this.reachMesh = new THREE.InstancedMesh(hexGeo, new THREE.MeshBasicMaterial({ color: '#ffd27a', transparent: true, opacity: 0.16, depthWrite: false }), 200);
     this.reachMesh.count = 0; s.add(this.reachMesh);
-    const dotGeo = new THREE.SphereGeometry(0.09, 8, 6);
+    const dotGeo = new THREE.SphereGeometry(0.2, 8, 6);
     this.pathMesh = new THREE.InstancedMesh(dotGeo, new THREE.MeshBasicMaterial({ color: '#fff2b0' }), 12);
     this.pathMesh.count = 0; s.add(this.pathMesh);
   }
@@ -136,10 +142,10 @@ export class WorldView {
       this.hover = t;
       this.onHover?.(t, e.clientX, e.clientY);
     });
-    el.addEventListener('wheel', (e) => { if (!this.active) return; this.dist = Math.max(8, Math.min(26, this.dist + Math.sign(e.deltaY) * 1.2)); }, { passive: true });
+    el.addEventListener('wheel', (e) => { if (!this.active) return; this.dist = Math.max(8, Math.min(140, this.dist * (e.deltaY > 0 ? 1.1 : 1 / 1.1))); }, { passive: true });
     window.addEventListener('keydown', (e) => {
       if (!this.active || e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-      const k = 1.2;
+      const k = 1.2 * S * 0.6;
       if (e.key === 'q' || e.key === 'Q') this.yawGoal -= Math.PI / 2;
       if (e.key === 'e' || e.key === 'E') this.yawGoal += Math.PI / 2;
       const pan = { ArrowLeft: [RIGHT, -k], a: [RIGHT, -k], ArrowRight: [RIGHT, k], d: [RIGHT, k], ArrowUp: [DOWN, -k], w: [DOWN, -k], ArrowDown: [DOWN, k], s: [DOWN, k] }[e.key];
@@ -165,8 +171,12 @@ export class WorldView {
     this.tiles.clear();
     this.tileMeshes = [];
     this.lightSources = [];
+    this.faded.clear();
+    // l'Abisso è un piccolo diorama: visuale più larga per vedere tutte le porte
+    if (map.abyss && !this.abyssView) this.dist = 70;
+    this.abyssView = !!map.abyss;
     const act = ACTS[state.act];
-    this.scene.fog = new THREE.FogExp2(act.fog, 0.024);
+    this.scene.fog = new THREE.FogExp2(act.fog, 0.024 / S);
     this.scene.background = new THREE.Color(act.fog).multiplyScalar(0.6);
     this.mist.material.color.set(act.fog).multiplyScalar(0.5);
     this.sun.color.set(act.sky[2]).lerp(new THREE.Color('#ffffff'), 0.6);
@@ -175,7 +185,7 @@ export class WorldView {
     let cx = 0, cz = 0, n = 0;
     for (const t of Object.values(map.tiles)) { const p = hexPos(t.q, t.r); cx += p.x; cz += p.z; n++; }
     this.center = new THREE.Vector3(cx / n, 0, cz / n);
-    this.geo = this.geo || (() => { const g = new THREE.CylinderGeometry(0.985, 1.0, 1, 6, 1); g.translate(0, 0.5, 0); return g; })();
+    this.geo = this.geo || (() => { const g = new THREE.CylinderGeometry(0.985 * S, 1.0 * S, 1, 6, 1); g.translate(0, 0.5, 0); return g; })();
     for (const t of Object.values(map.tiles)) this.buildTile(t, state);
     this.mapId = `${state.seed}:${state.act}`;
     this.mapV = map.v;
@@ -233,12 +243,13 @@ export class WorldView {
     const rnd = () => ((s = (s * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
     // Ogni oggetto deve stare tutto dentro il suo esagono (raggio interno ~0.87) e non toccare gli altri:
     // FOOT è il raggio di ingombro alla base con scala 1. Sulle caselle con un luogo non si mettono alberi o rocce.
-    const INNER = 0.82;
+    const INNER = 0.82 * S;
     const placed = [];
     const place = (kind, v, sc) => {
+      sc *= DS;
       let foot = (FOOT[kind] || 0.4) * sc;
       if (foot > INNER) { sc *= INNER / foot; foot = INNER; }
-      for (let tries = 0; tries < 8; tries++) {
+      for (let tries = 0; tries < 10; tries++) {
         const a = rnd() * Math.PI * 2, rr = Math.sqrt(rnd()) * (INNER - foot);
         const x = Math.cos(a) * rr, z = Math.sin(a) * rr;
         if (placed.some((o) => Math.hypot(o.x - x, o.z - z) < (o.foot + foot) * 0.9)) continue;
@@ -253,16 +264,17 @@ export class WorldView {
       return false;
     };
     if (!t.poi && bd.decor.length) {
-      if (bd.decor.includes('peak')) place('peak', Math.floor(rnd() * 3), 0.55); // una montagna per casella, piena
+      if (bd.decor.includes('peak')) { place('peak', Math.floor(rnd() * 3), 1.3); for (let i = 0; i < 2; i++) place('rock', Math.floor(rnd() * 3), 0.5 + rnd() * 0.3); } // una montagna per casella, piena
       else {
-        const count = Math.floor(rnd() * 3 * bd.decorRate + (bd.decorRate > 0.8 ? 1 : 0));
+        // la casella è molto più grande degli oggetti: ce ne stanno di più
+        const count = Math.floor((rnd() * 3 * bd.decorRate + (bd.decorRate > 0.8 ? 1 : 0)) * 2.6);
         for (let i = 0; i < count; i++) {
           const kind = bd.decor[Math.floor(rnd() * bd.decor.length)];
           place(kind, Math.floor(rnd() * 3), 0.55 + rnd() * 0.25);
         }
       }
     }
-    if (bd.decor.includes('pine') || bd.decor.includes('reed')) place('flower', Math.floor(rnd() * 3), 0.8);
+    if (bd.decor.includes('pine') || bd.decor.includes('reed')) for (let i = 0; i < 3; i++) place('flower', Math.floor(rnd() * 3), 0.8);
     this.tiles.set(hkey(t.q, t.r), entry);
     this.scene.add(group);
     this.updateTile(entry, t, state);
@@ -278,7 +290,7 @@ export class WorldView {
     if (!poi || !t.rev) return;
     // gli oggetti dei luoghi sono modelli 3D, con le facciate rivolte al centro del luogo;
     // le parti luminose (finestre, fiamme, cristalli) brillano da sole
-    const add = (kind, v, x, z, sc = 1) => { const m = prop(kind, v); m.position.set(x, 0, z); m.scale.setScalar(sc); m.rotation.y = x || z ? Math.atan2(-x, -z) : Math.PI / 4; g.add(m); if (m.userData.anim) this.animated.add(m); return m; };
+    const add = (kind, v, x, z, sc = 1) => { const m = prop(kind, v); m.position.set(x * S * 1.1, 0, z * S * 1.1); m.scale.setScalar(sc * DS * 1.3); m.rotation.y = x || z ? Math.atan2(-x, -z) : Math.PI / 4; g.add(m); if (m.userData.anim) this.animated.add(m); return m; };
     switch (poi.t) {
       case 'town': add('house', 0, -0.36, -0.3, 0.52); add('house', 1, 0.36, -0.32, 0.48); add('house', 2, 0.4, 0.3, 0.44); add('fire', 0, -0.36, 0.32, 0.5); entry.light = { color: '#ffb547', i: 3 }; break;
       case 'merchant': add('cart', 0, -0.1, -0.1, 0.6); add('lantern', 0, 0.42, 0.25, 0.6); entry.light = { color: '#ffd27a', i: 3 }; break;
@@ -294,8 +306,8 @@ export class WorldView {
     if (!poi.done || ['town', 'merchant', 'camp', 'boss'].includes(poi.t)) {
       const sm = new THREE.SpriteMaterial({ map: texFromCanvas(poiIcon(poi.t)), depthTest: false, transparent: true });
       const icon = new THREE.Sprite(sm);
-      icon.scale.set(0.55, 0.55, 1);
-      icon.position.set(0, 2.2, 0);
+      icon.scale.set(1.3, 1.3, 1);
+      icon.position.set(0, 2.2 * DS, 0);
       icon.renderOrder = 10;
       g.add(icon);
       entry.icon = icon;
@@ -306,13 +318,15 @@ export class WorldView {
 
   updateTile(entry, t, state) {
     const top = tileTop(t);
-    entry.mesh.scale.y = top + 0.6;
-    entry.mesh.position.y = -0.6;
+    entry.mesh.scale.y = top + 0.6 * S;
+    entry.mesh.position.y = -0.6 * S;
     entry.decor.position.y = top; entry.poiGroup.position.y = top;
     entry.decor.visible = t.rev;
     const bd = BIOMES[t.b];
     if (entry.rev !== t.rev || entry.cor !== t.cor) {
-      entry.mesh.material = [this.sideMat(t, t.rev), this.topMat(t, t.cor, t.rev), this.sideMat(t, t.rev)];
+      const mats = [this.sideMat(t, t.rev), this.topMat(t, t.cor, t.rev), this.sideMat(t, t.rev)];
+      // se la casella è sfumata (copre un eroe) il materiale vero si rimette alla fine della sfumatura
+      if (entry.mesh.userData.origMat) entry.mesh.userData.origMat = mats; else entry.mesh.material = mats;
       entry.rev = t.rev; entry.cor = t.cor;
       entry.decor.traverse((o) => { if (o.material) o.material = o.material; });
     }
@@ -323,7 +337,7 @@ export class WorldView {
       entry.poiState = ps;
     }
     entry.t = t; entry.mesh.userData.tile = t;
-    if (bd.water) entry.mesh.position.y = -0.62;
+    if (bd.water) entry.mesh.position.y = -0.62 * S;
   }
 
   sync(state, myReach) {
@@ -364,7 +378,7 @@ export class WorldView {
     // più eroi nella stessa casella si dispongono a cerchio
     const byTile = {};
     for (const h of heroes) { const pos = h.pos || state.party; (byTile[hkey(pos.q, pos.r)] ||= []).push(h.id); }
-    const OFF = [[0, 0], [-0.32, 0.18], [0.3, 0.22], [0.05, -0.28]];
+    const OFF = [[0, 0], [-0.58, 0.32], [0.54, 0.4], [0.09, -0.5]];
     for (const sp of this.partySprites) {
       const h = heroes.find((x) => x.id === sp.userData.id);
       const pos = h.pos || state.party;
@@ -414,6 +428,74 @@ export class WorldView {
     this.pathMesh.instanceMatrix.needsUpdate = true;
   }
   centerOnParty() { this.follow = true; }
+
+  // Alberi, case, rocce e rilievi tra la camera e gli eroi diventano semitrasparenti
+  updateOcclusion(dt) {
+    if (!this.partySprites.length) return;
+    const cam = this.camera.position;
+    const toCam = new THREE.Vector3(Math.sin(YAW), 0, Math.cos(YAW)); // verso la camera, sul terreno
+    const meshes = [];
+    const owner = new Map(); // mesh colpita -> oggetto da sfumare (il modello intero o la casella)
+    // solo le caselle tra un eroe e la camera, entro poche caselle
+    const near = (gp) => this.partySprites.some((sp) => {
+      const dx = gp.x - sp.position.x, dz = gp.z - sp.position.z;
+      const along = dx * toCam.x + dz * toCam.z, side = Math.abs(dx * RIGHT.x + dz * RIGHT.z);
+      return side < 2.5 * S && along > -1.2 * S && along < 5 * S;
+    });
+    for (const e of this.tiles.values()) {
+      if (!near(e.group.position)) continue;
+      for (const g of [...e.decor.children, ...e.poiGroup.children]) {
+        if (g.isSprite) continue;
+        g.traverse((o) => { if (o.isMesh) { meshes.push(o); owner.set(o, g); } });
+      }
+      meshes.push(e.mesh); owner.set(e.mesh, e.mesh);
+    }
+    const hits = new Set();
+    const p = new THREE.Vector3(), dir = new THREE.Vector3(), foot = new THREE.Vector3();
+    for (const sp of this.partySprites) {
+      const h = sp.rig?.h || 1.2;
+      foot.set(sp.position.x, 0, sp.position.z);
+      for (const fy of [0.12, 0.5, 0.92]) {
+        p.copy(sp.position); p.y += h * fy;
+        dir.subVectors(p, cam);
+        const len = dir.length();
+        this.occRay.set(cam, dir.normalize());
+        this.occRay.far = len - 0.4;
+        for (const hit of this.occRay.intersectObjects(meshes, false)) {
+          const o = owner.get(hit.object);
+          // la casella su cui sta l'eroe non conta
+          const tl = o.userData.tile;
+          if (tl && hexPos(tl.q, tl.r).distanceTo(foot) < S) continue;
+          hits.add(o);
+        }
+      }
+    }
+    const clone = (m) => { const c = m.clone(); c.transparent = true; c.depthWrite = false; return c; };
+    for (const o of hits) {
+      if (this.faded.has(o)) continue;
+      const parts = [];
+      o.traverse((m) => {
+        if (!m.isMesh || m.userData.origMat) return;
+        m.userData.origMat = m.material;
+        m.material = Array.isArray(m.material) ? m.material.map(clone) : clone(m.material);
+        parts.push(m);
+      });
+      o.userData.fadeParts = parts;
+      o.userData.fadeV = 1;
+      this.faded.add(o);
+    }
+    for (const o of this.faded) {
+      const goal = hits.has(o) ? (o.userData.tile ? 0.45 : 0.32) : 1;
+      o.userData.fadeV += (goal - o.userData.fadeV) * Math.min(1, dt * 8);
+      const done = !o.parent || (goal === 1 && o.userData.fadeV > 0.97);
+      for (const m of o.userData.fadeParts) {
+        const mats = Array.isArray(m.material) ? m.material : [m.material];
+        if (done) { for (const x of mats) x.dispose(); m.material = m.userData.origMat; delete m.userData.origMat; }
+        else for (const x of mats) x.opacity = o.userData.fadeV;
+      }
+      if (done) { delete o.userData.fadeParts; this.faded.delete(o); }
+    }
+  }
   focusTile(q, r) { const p = hexPos(q, r); this.camTarget.set(p.x, 0, p.z); this.follow = false; }
 
   update(dt, t) {
@@ -431,9 +513,9 @@ export class WorldView {
         const u = sp.userData;
         // verso del movimento sullo schermo: lo sprite è disegnato rivolto a sinistra, verso destra si specchia
         const dx = new THREE.Vector3().subVectors(u.goal, u.cur).dot(RIGHT);
-        const moving = u.cur.distanceTo(u.goal) > 0.05;
+        const moving = u.cur.distanceTo(u.goal) > 0.15;
         if (Math.abs(dx) > 0.03) u.facing = dx > 0 ? -1 : 1;
-        u.cur.lerp(u.goal, Math.min(1, dt * 4));
+        u.cur.lerp(u.goal, Math.min(1, dt * 2.2));
         sp.position.copy(u.cur);
         sp.rotation.y = YAW;
         sp.rig.setAnim(!u.alive ? 'ko' : moving ? 'walk' : 'idle');
@@ -448,8 +530,13 @@ export class WorldView {
           this.partyPos.copy(u.cur);
         }
       }
-      if (!this.partySprites.some((sp) => sp.userData.active)) { this.activeRing.visible = false; this.partyPos.lerp(this.partyGoal, Math.min(1, dt * 4)); }
-      if (this.follow) this.camTarget.lerp(this.partyPos, Math.min(1, dt * 3));
+      if (!this.partySprites.some((sp) => sp.userData.active)) { this.activeRing.visible = false; this.partyPos.lerp(this.partyGoal, Math.min(1, dt * 2.2)); }
+      if (this.follow) {
+        this._ft ||= new THREE.Vector3();
+        // nell'Abisso la camera inquadra tutto il piccolo diorama, porte comprese
+        this._ft.copy(this.abyssView && this.center ? this.center : this.partyPos);
+        this.camTarget.lerp(this._ft, Math.min(1, dt * 3));
+      }
     }
     // camera
     this.target.lerp(this.camTarget, Math.min(1, dt * 6));
@@ -464,10 +551,14 @@ export class WorldView {
       this.target.z + Math.cos(YAW) * Math.cos(ISO_PITCH) * CAM_DIST);
     this.camera.lookAt(this.target.x, this.target.y + 0.4, this.target.z);
     // sole che segue la camera (ombre stabili)
-    this.sun.position.set(this.target.x - 10, 14, this.target.z + 6);
+    this.sun.position.set(this.target.x - 30, 42, this.target.z + 18);
     this.sun.target.position.copy(this.target);
+    // l'area delle ombre segue lo zoom
+    const shc = this.sun.shadow.camera, ext = Math.max(30, vh * asp * 1.25);
+    if (shc.right !== ext) { Object.assign(shc, { left: -ext, right: ext, top: ext, bottom: -ext }); shc.updateProjectionMatrix(); }
+    this.updateOcclusion(dt);
     // icone che fluttuano, hover
-    for (const e of this.tiles.values()) if (e.icon) e.icon.position.y = 2.1 + Math.sin(t * 2 + e.t.q) * 0.1;
+    for (const e of this.tiles.values()) if (e.icon) e.icon.position.y = 2.1 * DS + Math.sin(t * 2 + e.t.q) * 0.2;
     if (this.hover && this.active) {
       const p = hexPos(this.hover.q, this.hover.r);
       this.hoverRing.position.set(p.x, tileTop(this.hover) + 0.03, p.z);
@@ -480,18 +571,18 @@ export class WorldView {
       const it = srcs[i];
       if (!it) { l.intensity = 0; return; }
       const gp = it.s.entry.group.position;
-      l.position.set(gp.x, it.s.entry.poiGroup.position.y + 1.0, gp.z + 0.3);
+      l.position.set(gp.x, it.s.entry.poiGroup.position.y + 1.0 * DS, gp.z + 0.3 * S);
       l.color.set(it.s.color);
-      l.intensity = it.s.i * (it.s.flicker ? 0.85 + Math.sin(t * 13 + i) * 0.1 + Math.sin(t * 7.3) * 0.08 : 1);
+      l.intensity = it.s.i * 9 * (it.s.flicker ? 0.85 + Math.sin(t * 13 + i) * 0.1 + Math.sin(t * 7.3) * 0.08 : 1);
     });
     // cenere
     const ap = this.ash.geometry.attributes.position;
     const threat = this.state?.threat || 0;
     this.ash.material.opacity = 0.35 + threat / 160;
     for (let i = 0; i < ap.count; i++) {
-      let y = ap.getY(i) - dt * (0.4 + (i % 5) * 0.1);
+      let y = ap.getY(i) - dt * (0.4 + (i % 5) * 0.1) * 2.6;
       let x = ap.getX(i) + Math.sin(t + i) * dt * 0.2;
-      if (y < -0.5) { y = 10 + Math.random() * 2; x = (Math.random() - 0.5) * 40; ap.setZ(i, (Math.random() - 0.5) * 30); }
+      if (y < -0.5) { y = (10 + Math.random() * 2) * (S * 0.6); x = (Math.random() - 0.5) * 40 * (S * 0.6); ap.setZ(i, (Math.random() - 0.5) * 30 * (S * 0.6)); }
       ap.setY(i, y); ap.setX(i, x);
     }
     ap.needsUpdate = true;

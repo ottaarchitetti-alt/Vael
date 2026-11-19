@@ -31,8 +31,9 @@ function enemyUnit(g, id, idx, opts = {}) {
   const d = ENEMIES[id];
   const n = g.partySize || s.heroes.filter((h) => h.alive).length;
   const partyScale = d.boss ? 0.45 + 0.2 * n : 0.6 + 0.14 * n;
-  const threatScale = 1 + s.threat / 250;
-  let hp = Math.round(d.hp * partyScale * (opts.hpMul || 1));
+  // nell'Abisso i nemici crescono a ogni piano
+  const threatScale = (1 + s.threat / 250) * (s.endless?.scale || 1);
+  let hp = Math.round(d.hp * partyScale * (opts.hpMul || 1) * (s.endless?.scale || 1));
   const known = s.mythic && MYTHIC[s.mythic].revealWeak ? [...d.weak] : [];
   return {
     id: `e${idx}`, side: 'enemy', enemyId: id, name: d.name, boss: !!d.boss,

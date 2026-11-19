@@ -15,7 +15,7 @@ export function writeSave(name, state, meta) {
 }
 
 export function listSaves() {
-  return fs.readdirSync(DIR).filter((f) => f.endsWith('.json') && f !== 'legends.json').map((f) => {
+  return fs.readdirSync(DIR).filter((f) => f.endsWith('.json') && f !== 'legends.json' && f !== 'abisso.json').map((f) => {
     try {
       const { meta } = JSON.parse(fs.readFileSync(path.join(DIR, f), 'utf8'));
       return { file: f, ...meta };
@@ -35,4 +35,15 @@ export function addLegends(list) {
   const all = readLegends();
   for (const l of list) if (!all.find((x) => x.id === l.id)) all.push(l);
   fs.writeFileSync(path.join(DIR, 'legends.json'), JSON.stringify(all.slice(-40)));
+}
+
+// record dell'Abisso Senza Fondo (piano più profondo raggiunto)
+export function readAbyssRecords() {
+  try { return JSON.parse(fs.readFileSync(path.join(DIR, 'abisso.json'), 'utf8')); } catch { return []; }
+}
+export function addAbyssRecord(rec) {
+  const all = readAbyssRecords();
+  all.push(rec);
+  all.sort((a, b) => b.floor - a.floor);
+  fs.writeFileSync(path.join(DIR, 'abisso.json'), JSON.stringify(all.slice(0, 20)));
 }

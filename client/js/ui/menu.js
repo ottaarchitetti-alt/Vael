@@ -4,6 +4,7 @@ import { esc } from './util.js';
 export const MODES = [
   { id: 'local', icon: '🏠', name: 'Campagna locale', desc: 'Un solo PC: crei fino a 4 eroi e li guidi tutti tu. I turni passano da un eroe all\'altro.' },
   { id: 'online', icon: '🌐', name: 'Campagna online', desc: 'Apri una stanza e invita gli amici con un codice o un link (in rete locale o via Internet).' },
+  { id: 'abyss', icon: '🕳', name: 'Abisso Senza Fondo', desc: 'Solo combattimenti, piano dopo piano, all’infinito: nemici sempre più forti, mercanti, prove e un guardiano ogni 5 piani. Si gioca anche online (scegli «Abisso» nella lobby).' },
   { id: 'tutorial', icon: '📖', name: 'Tutorial', desc: 'Una breve avventura guidata con tre eroi già pronti: ti mostra passo passo tutte le funzionalità.' },
 ];
 

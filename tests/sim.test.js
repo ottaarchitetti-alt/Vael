@@ -79,6 +79,10 @@ function bot(g, p, maxSteps = 20000) {
           catch { g.handle(p, { type: 'combat', kind: 'attack', target: (front.length ? front : foes)[0].id }); }
         }
         g.flush();
+      } else if (s.phase === 'abyss') {
+        if (s.vote) g.handle(p, { type: 'vote', idx: s.endless.doors.length - 1 });
+        g.flush();
+        if (g.stopAt && s.endless.floor >= g.stopAt) break;
       } else if (s.phase === 'chapter') g.handle(p, { type: 'chapter_continue' });
       else if (s.phase === 'mythic') g.handle(p, { type: 'vote', idx: s.mythicOpts.findIndex((o) => o.ok) });
       else break;
@@ -254,4 +258,31 @@ test('mosse d\'arma: schianto ad area, raffica e tiro a distanza', async () => {
   hero.acted = false; c.active = hero.id;
   g.handle(p, { type: 'combat', kind: 'attack', move: 'w_raffica' });
   assert.equal(c.last.results.length, 3);
+});
+
+test('Abisso Senza Fondo: piani infiniti con boss, mercanti e prove', () => {
+  const g = makeGame();
+  const p = g.addPlayer({ name: 'Speleologo', token: 'abx', isHost: true });
+  g.handle(p, { type: 'set_mode', mode: 'local', goal: 'abyss' });
+  for (const cls of ['lama', 'custode', 'arcanista', 'cacciatrice']) g.handle(p, { type: 'create_hero', name: cls, cls });
+  g.handle(p, { type: 'start' });
+  const s = g.s;
+  assert.equal(s.phase, 'abyss');
+  assert.equal(s.endless.floor, 1);
+  assert.ok(s.endless.doors.length >= 2 && s.endless.doors.some((d) => d.t === 'combat'));
+  for (const h of s.heroes) { h.bonusStats = { str: 14, vit: 16, int: 14, spi: 14, dex: 12, agi: 6 }; const d = heroDerived(h, s); h.hp = d.maxHp; h.mp = d.maxMp; }
+  s.gold = 2000;
+  const seen = new Set();
+  const origNext = g.handle.bind(g);
+  g.handle = (pl, a) => { if (g.s.endless?.door) seen.add(g.s.endless.door.t); return origNext(pl, a); };
+  g.stopAt = 12;
+  bot(g, p, 30000);
+  if (process.env.SIMLOG) console.log('abisso:', g.s.endless.floor, g.s.phase, [...seen], g.s.gameover?.reason);
+  assert.ok(g.s.endless.floor >= 6 || g.s.phase === 'gameover', `discesa bloccata al piano ${g.s.endless.floor} (${g.s.phase})`);
+  if (g.s.phase !== 'gameover') {
+    assert.ok(seen.has('boss'), 'nessun guardiano affrontato');
+    assert.ok(g.s.endless.scale > 1);
+    assert.ok(g.s.act >= 2, 'i piani profondi usano i nemici degli atti successivi');
+  }
+  assert.equal(g.s.threat, 0);
 });

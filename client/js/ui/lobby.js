@@ -99,7 +99,8 @@ export function renderLobby(app) {
       }).join('')}
       ${isHost ? `
         <div class="host-ctrl">
-          <button class="primary big" data-act="start" ${state.heroes.length ? '' : 'disabled'}>⚔ Inizia la campagna</button>
+          <div class="goal-pick">${[['campaign', '📜 Campagna', 'La storia in 3 atti'], ['abyss', '🕳 Abisso', 'Piani infiniti di battaglie']].map(([g, n, t]) => `<button class="chip ${(state.goal || 'campaign') === g ? 'sel' : ''}" data-act="set_goal" data-goal="${g}" title="${t}">${n}</button>`).join('')}</div>
+          <button class="primary big" data-act="start" ${state.heroes.length ? '' : 'disabled'}>${state.goal === 'abyss' ? '🕳 Scendi nell’Abisso' : '⚔ Inizia la campagna'}</button>
           <button data-act="show_saves">📂 Carica partita</button>
           ${ui.saves ? `<div class="saves">${ui.saves.length ? ui.saves.map((s) => `<div class="save"><div><b>${esc(s.name)}</b><br><small>Atto ${s.act} · giorno ${s.day} · ${new Date(s.date).toLocaleString('it-IT')}</small><br><small class="muted">${esc(s.heroes)}</small></div><button data-act="load" data-file="${esc(s.file)}">Carica</button></div>`).join('') : '<p class="muted">Nessun salvataggio.</p>'}</div>` : ''}
         </div>` : `<p class="muted">In attesa che l'host avvii la campagna${myHeroes ? '' : ' — crea il tuo eroe!'}</p>`}
@@ -110,7 +111,7 @@ export function renderLobby(app) {
       <div class="lobby-head">
         ${isHost ? '<button class="ghost back-menu" data-act="to_menu">◂ Menu principale</button>' : ''}
         <h1>Ceneri di Vael</h1>
-        <div class="subtitle">${local ? '🏠 Campagna locale — tutti gli eroi si giocano da questo PC' : '🌐 Campagna online — un gioco di ruolo cooperativo nel crepuscolo eterno'}</div>
+        <div class="subtitle">${state.goal === 'abyss' ? '🕳 Abisso Senza Fondo — ' : ''}${local ? '🏠 Campagna locale — tutti gli eroi si giocano da questo PC' : '🌐 Campagna online — un gioco di ruolo cooperativo nel crepuscolo eterno'}</div>
       </div>
       <div class="lobby-grid">
         <div class="col">${local ? '<div class="panel"><h3>Campagna locale</h3><p class="small">Crea da 1 a 4 eroi: li guiderai tutti tu. In battaglia agiscono uno alla volta secondo la velocità, e nel viaggio assegni i dadi un eroe alla volta.</p><p class="muted small">Per giocare con altre persone torna al menu e scegli «Campagna online».</p></div>' : invite + plist}<div class="panel lore"><h3>Il Mondo</h3><div class="lore-text">${nl2p(LORE)}</div></div></div>

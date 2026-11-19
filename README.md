@@ -47,6 +47,9 @@ Il link pubblico cambia a ogni avvio. Il codice stanza protegge l'accesso.
 
 - **Missioni**: il pannello 📜 a destra mostra la tappa attuale della storia, il boss dell'atto (bloccato finché non completate le tappe) e le missioni secondarie. Freccia e distanza indicano la direzione; cliccandole la visuale si sposta sul luogo.
 
+- **Abisso Senza Fondo**: modalità a piani infiniti, dal menu principale (🕳) o scegliendo «Abisso» nella lobby (anche online). A ogni piano il gruppo vota una porta: ⚔ battaglia, ☠ élite, 🛒 mercante (bottega, locanda, cappella, fabbro), 🎲 prova ai dadi o 🔥 fonte di brace (riposo e una Scintilla). Ogni 5 piani c'è un guardiano; batterlo cura il gruppo e rialza i caduti. I nemici crescono a ogni piano (e passano a quelli degli atti II e III); se il gruppo cade la discesa finisce e il piano raggiunto entra nei record (`saves/abisso.json`).
+- **Mappa in scala**: il diorama è 5 volte più grande rispetto agli eroi, che restano della stessa misura; alberi, case e rovine sono quasi in scala con i personaggi. Ciò che copre gli eroi diventa trasparente.
+
 **Comandi della mappa**: trascina per spostare la visuale, rotellina per lo zoom, WASD o frecce per scorrere, C o spazio per centrare la visuale sul gruppo.
 
 ## Salvataggi

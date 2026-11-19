@@ -9,6 +9,7 @@ import { ITEMS, AFFIXES, RARITY } from '../shared/data/items.js';
 import { TALENTS, TRAITS, TRANSFORMS, BONDS, cleanLook } from '../shared/data/heroes.js';
 import { EVENTS, CAMP_SCENES, SOLO_SCENES } from '../shared/data/events.js';
 import { STORY_EVENTS, STORY, CHAPTERS, computeEnding } from '../shared/data/story.js';
+import { newAbyss, nextFloor, chooseDoor, enterRoom, abyssDefeat } from './abyss.js';
 import { TUTORIAL_STORY, TUTORIAL_EVENTS, TUTORIAL_HEROES, TUTORIAL_ENDING } from '../shared/data/tutorial.js';
 import { MYTHIC, BIOMES, ACTS, FACTIONS } from '../shared/data/mythic.js';
 import { heroDerived, checkBonus, xpToNext, MAX_LEVEL, MAX_HEROES, SLOTS, hkey, STAT_NAMES, itemPrice, JOURNEY, hexDist } from '../shared/rules.js';
@@ -16,6 +17,7 @@ import { heroDerived, checkBonus, xpToNext, MAX_LEVEL, MAX_HEROES, SLOTS, hkey, 
 const PLAYER_COLORS = ['#ffb547', '#7fd4ff', '#b58bff', '#7dff9a', '#ff7a8a', '#e8e0c8'];
 const allEvents = (id) => EVENTS[id] || STORY_EVENTS[id] || TUTORIAL_EVENTS[id];
 export const MODES = ['local', 'online'];
+export const GOALS = ['campaign', 'abyss'];
 
 export class Game {
   constructor(onChange) {
@@ -24,12 +26,13 @@ export class Game {
     this.timers = new Set();
     this.rng = new RNG(crypto.randomInt(1, 2 ** 31));
     this.mode = 'online'; // 'local' = un solo PC, 'online' = stanza con codice
+    this.goal = 'campaign'; // 'campaign' = storia in 3 atti, 'abyss' = Abisso Senza Fondo
     this.s = this.lobbyState();
     this.pending = false;
   }
 
   lobbyState() {
-    return { phase: 'lobby', heroes: [], log: [], seq: 0, version: 1, mode: this.mode };
+    return { phase: 'lobby', heroes: [], log: [], seq: 0, version: 1, mode: this.mode, goal: this.goal };
   }
 
   // ---------------- utilità ----------------
@@ -270,11 +273,19 @@ export class Game {
         if (s.phase !== 'lobby') throw 'Solo nella lobby';
         if (!MODES.includes(a.mode)) throw 'Modalità sconosciuta';
         this.mode = s.mode = a.mode;
+        if (a.goal) { if (!GOALS.includes(a.goal)) throw 'Modalità sconosciuta'; this.goal = s.goal = a.goal; }
         if (a.mode === 'local') {
           // in locale tutti gli eroi sono guidati da chi sta al PC
           for (const h of s.heroes) { h.owner = player.id; h.ownerName = player.name; }
         }
         this.log(a.mode === 'local' ? 'Campagna locale: guiderai tutti gli eroi da questo PC.' : 'Campagna online: invita i compagni con il codice stanza.', 'sys');
+        break;
+      }
+      case 'set_goal': {
+        hostOnly();
+        if (s.phase !== 'lobby') throw 'Solo nella lobby';
+        if (!GOALS.includes(a.goal)) throw 'Modalità sconosciuta';
+        this.goal = s.goal = a.goal;
         break;
       }
       case 'start_tutorial': {
@@ -291,7 +302,8 @@ export class Game {
         hostOnly();
         if (s.phase !== 'lobby') throw 'Già iniziata';
         if (!s.heroes.length) throw 'Crea almeno un eroe';
-        this.newCampaign();
+        if (s.goal === 'abyss') newAbyss(this);
+        else this.newCampaign();
         break;
       }
       case 'save': {
@@ -381,6 +393,8 @@ export class Game {
       default: throw 'Azione sconosciuta: ' + a.type;
     }
     if (s.phase !== 'lobby' && s.phase !== 'gameover' && s.phase !== 'ending' && s.threat >= 100) this.gameOver('La Cenere Marea ha sommerso Vael.');
+    // Abisso: finita una stanza (battaglia, bottega, prova, fonte) si scende al piano successivo
+    if (this.s.endless && this.s.phase === 'map') nextFloor(this);
     this.changed();
   }
 
@@ -698,6 +712,7 @@ export class Game {
     if (v.kind === 'event') this.chooseOption(choice);
     else if (v.kind === 'mythic') this.chooseMythic(choice);
     else if (v.kind === 'camp') this.resolveCamp(choice);
+    else if (v.kind === 'door') chooseDoor(this, choice);
   }
   chooseOption(idx) {
     const s = this.s, e = s.event, def = allEvents(e.id).opts[idx];
@@ -811,7 +826,7 @@ export class Game {
         }
         case 'useitem': { const i = s.bag.findIndex((it) => it.base === v); if (i >= 0) { s.bag.splice(i, 1); out.gains.push(`Usato: ${ITEMS[v].name}`); } break; }
         case 'fate': { const f = Math.max(0, Math.min(s.fateMax, s.fate + v)); out.gains.push(`${v > 0 ? '+' : ''}${v} Scintille del Fato`); s.fate = f; break; }
-        case 'threat': s.threat = Math.max(0, Math.min(100, s.threat + v)); out.gains.push(`Cenere Marea ${v > 0 ? '+' : ''}${v}%`); break;
+        case 'threat': if (s.endless) break; s.threat = Math.max(0, Math.min(100, s.threat + v)); out.gains.push(`Cenere Marea ${v > 0 ? '+' : ''}${v}%`); break;
         case 'rations': s.rations = Math.max(0, s.rations + v); out.gains.push(`${v > 0 ? '+' : ''}${v} razioni`); break;
         case 'xp': { const ups = this.grantXp(Math.round(v * actMul)); out.gains.push(`+${Math.round(v * actMul)} XP al gruppo`, ...ups); break; }
         case 'flag': s.flags[v] = true; break;
@@ -872,7 +887,8 @@ export class Game {
     const s = this.s;
     const poi = tile?.poi;
     let services, name;
-    if (shopKind) { services = ['bottega']; name = shopKind === 'ombra' ? 'Banco del Mercante d\'Ombra' : 'Zattera dei Contrabbandieri'; }
+    if (shopKind === 'abisso') { services = ['locanda', 'cappella', 'bottega', 'fabbro']; name = "Mercante dell'Abisso"; }
+    else if (shopKind) { services = ['bottega']; name = shopKind === 'ombra' ? 'Banco del Mercante d\'Ombra' : 'Zattera dei Contrabbandieri'; }
     else if (poi.t === 'merchant') { services = ['bottega', 'voci']; name = poi.name; }
     else { services = ['locanda', 'cappella', 'bottega', 'fabbro', 'voci']; name = poi.name; }
     if (poi && (!poi.stock || poi.stockAct !== s.act || poi.stockDay < s.day - 6)) { poi.stock = this.shopStock(poi.t); poi.stockAct = s.act; poi.stockDay = s.day; }
@@ -1012,12 +1028,12 @@ export class Game {
       if (!this.aliveHeroes().length) return this.defeat();
       this.log('Gli eroi in battaglia sono caduti, ma i compagni lontani possono ancora soccorrerli (Cappella, Brace Vitale, Risveglio).', 'bad');
       s.phase = 'map';
-      if (!this.activeHero()?.alive) this.advanceTurn();
+      if (!s.endless && !this.activeHero()?.alive) this.advanceTurn();
       return;
     }
     s.combat = null;
     s.phase = 'map';
-    if (!this.activeHero()?.alive) this.advanceTurn();
+    if (!s.endless && !this.activeHero()?.alive) this.advanceTurn();
     for (const h of s.heroes) this.clampHero(h);
     if (c.phase === 'victory' && c.onWin) {
       const r = this.applyFx(c.onWin, null);
@@ -1026,6 +1042,7 @@ export class Game {
   }
   defeat() {
     const s = this.s;
+    if (s.endless) return abyssDefeat(this);
     if (s.fate >= 2) {
       s.fate -= 2;
       s.gold = Math.floor(s.gold / 2);
@@ -1114,7 +1131,7 @@ export class Game {
   // ---------------- salvataggi ----------------
   meta() {
     const s = this.s;
-    return { act: s.act, day: s.day, heroes: s.heroes.map((h) => `${h.name} (${CLASSES[h.cls].name} ${h.level})`).join(', '), phase: s.phase };
+    return { act: s.act, day: s.day, abyss: s.endless?.floor || 0, heroes: s.heroes.map((h) => `${h.name} (${CLASSES[h.cls].name} ${h.level})`).join(', '), phase: s.phase };
   }
   serialize() { return { ...this.s, combat: null, rng: this.rng.s, phase: this.s.phase === 'combat' ? 'map' : this.s.phase }; }
   save(name) {
@@ -1125,7 +1142,7 @@ export class Game {
     this.log(`💾 Partita salvata: ${file}`, 'sys');
     return file;
   }
-  autosave() { if (this.s.tutorial) return; try { writeSave('autosalvataggio', this.serialize(), this.meta()); } catch (e) { console.error('autosave', e); } }
+  autosave() { if (this.s.tutorial || this.s.endless) return; try { writeSave('autosalvataggio', this.serialize(), this.meta()); } catch (e) { console.error('autosave', e); } }
   load(file) {
     const data = readSave(file);
     this.clearTimers();
@@ -1140,8 +1157,10 @@ export class Game {
       h.owner = p ? p.id : host.id;
     }
     for (const h of st.heroes) h.pos ||= { ...(st.party || st.map?.start || { q: 0, r: 0 }) };
-    if (st.map && !st.travel?.order) { st.travel = this.newDayTravel(st.travel); this.syncFocus(); }
-    if (st.vote) this.tryResolveVote();
+    if (st.map && !st.endless && !st.travel?.order) { st.travel = this.newDayTravel(st.travel); this.syncFocus(); }
+    if (st.endless && st.phase === 'map') nextFloor(this);
+    else if (st.endless && st.phase === 'abyss' && st.endless.entering != null) enterRoom(this);
+    if (this.s.vote) this.tryResolveVote();
     this.log(`📂 Caricata la partita «${data.meta?.name || file}».`, 'sys');
   }
   listSaves() { return listSaves(); }

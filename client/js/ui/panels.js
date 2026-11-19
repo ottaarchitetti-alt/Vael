@@ -163,9 +163,9 @@ export function renderEnding(app) {
 export function renderGameOver(app) {
   const s = app.state;
   return `<div class="modal-box gameover">
-    <h1>La Cenere ha vinto</h1>
+    <h1>${s.endless ? 'L’Abisso vi ha inghiottiti' : 'La Cenere ha vinto'}</h1>
     <div class="ev-text"><p>${esc(s.gameover?.reason || '')}</p></div>
-    ${app.me?.isHost ? `<div class="btnrow"><button data-act="load" data-file="autosalvataggio.json">Carica l'ultimo autosalvataggio</button><button class="primary" data-act="to_lobby">Torna alla lobby</button></div>` : '<p class="muted">In attesa dell\'host...</p>'}
+    ${app.me?.isHost && s.endless ? '<div class="btnrow"><button class="primary" data-act="to_lobby">Torna alla lobby</button></div>' : app.me?.isHost ? `<div class="btnrow"><button data-act="load" data-file="autosalvataggio.json">Carica l'ultimo autosalvataggio</button><button class="primary" data-act="to_lobby">Torna alla lobby</button></div>` : '<p class="muted">In attesa dell\'host...</p>'}
   </div>`;
 }
 

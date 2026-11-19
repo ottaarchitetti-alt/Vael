@@ -31,16 +31,16 @@ export function renderTop(app) {
   const th = s.threat;
   return `
     <div class="topbar">
-      <div class="tb-left"><div class="act">${s.tutorial ? '📖 Tutorial — La prova dei Viandanti' : esc(act?.name || '')}</div><div class="day">Giorno ${s.day}${s.mythic ? ` · <span style="color:${MYTHIC[s.mythic].color}">${MYTHIC[s.mythic].icon} ${MYTHIC[s.mythic].name}</span>` : ''}</div></div>
+      <div class="tb-left"><div class="act">${s.endless ? '🕳 Abisso Senza Fondo' : s.tutorial ? '📖 Tutorial — La prova dei Viandanti' : esc(act?.name || '')}</div><div class="day">${s.endless ? `Piano ${s.endless.floor} · record ${Math.max(s.endless.best || 0, s.endless.floor)}` : `Giorno ${s.day}`}${s.mythic ? ` · <span style="color:${MYTHIC[s.mythic].color}">${MYTHIC[s.mythic].icon} ${MYTHIC[s.mythic].name}</span>` : ''}</div></div>
       <div class="tb-center">
-        <div class="threat ${th >= 75 ? 'dire' : ''}" title="Cenere Marea: avanza ogni giorno e con alcune scelte. A 100% la partita è persa. Accendete i Fari per respingerla.">
+        ${s.endless ? '' : `<div class="threat ${th >= 75 ? 'dire' : ''}" title="Cenere Marea: avanza ogni giorno e con alcune scelte. A 100% la partita è persa. Accendete i Fari per respingerla.">
           ${hourglass(th)}
           <div class="th-body"><div class="th-label">Cenere Marea <b>${th}%</b></div>
           <div class="th-bar"><div class="th-fill" style="width:${th}%"></div>${[25, 50, 75].map((x) => `<i style="left:${x}%"></i>`).join('')}</div></div>
-        </div>
+        </div>`}
         <div class="fate" title="Scintille del Fato (${s.fate}/${s.fateMax}): risorsa condivisa per ritirare i dadi, evocare e sfuggire alla morte"><small>Fato</small>${fate}</div>
         <div class="res" title="Oro">🪙 ${s.gold}</div>
-        <div class="res ${s.rations < s.heroes.filter((h) => h.alive).length ? 'low' : ''}" title="Razioni: ogni eroe ne mangia una a fine giornata">🍖 ${s.rations}</div>
+        ${s.endless ? '' : `<div class="res ${s.rations < s.heroes.filter((h) => h.alive).length ? 'low' : ''}" title="Razioni: ogni eroe ne mangia una a fine giornata">🍖 ${s.rations}</div>`}
         ${s.crystals ? `<div class="res" title="Cristalli risvegliati: sbloccano i mestieri secondari">💎 ${s.crystals}</div>` : ''}
       </div>
       <div class="tb-right">
@@ -148,7 +148,7 @@ export function tileTooltip(app, tile) {
   let txt = `<b>${esc(bd.name)}</b>`;
   if (poi) txt += `<br>${POI_NAMES[poi.t] || ''}${poi.name ? ': ' + esc(poi.name) : ''}${poi.done && !['town', 'merchant', 'camp'].includes(poi.t) ? ' <i>(visitato)</i>' : ''}${poi.lit ? ' <i>(acceso)</i>' : ''}`;
   if (bd.blocked) txt += '<br><i>Invalicabile</i>';
-  else if (bd.danger) txt += `<br><small>Pericolo: ${Math.round(bd.danger + s.threat / 5 + (tile.cor ? 12 : 0))}</small>`;
+  else if (bd.danger && !s.map?.abyss) txt += `<br><small>Pericolo: ${Math.round(bd.danger + s.threat / 5 + (tile.cor ? 12 : 0))}</small>`;
   if (tile.cor) txt += '<br><span class="bad">Corrotta dalla Cenere</span>';
   const here = s.heroes.filter((h) => h.pos && h.pos.q === tile.q && h.pos.r === tile.r);
   if (here.length) txt += `<br><i>Qui: ${here.map((h) => esc(h.name) + (h.alive ? '' : ' ✝')).join(', ')}</i>`;

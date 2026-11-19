@@ -19,6 +19,7 @@ import { esc, toast } from './ui/util.js';
 import { renderTitle } from './ui/menu.js';
 import { loadSpriteOverrides } from './render/rig.js';
 import { renderCoach } from './ui/coach.js';
+import { renderAbyss, renderAbyssPanel } from './ui/abyss.js';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -160,10 +161,10 @@ function render() {
   ensureLog();
   $('hud').innerHTML = renderTop(app);
   $('party').innerHTML = renderParty(app);
-  $('quests').innerHTML = s.phase === 'combat' ? '' : renderQuests(app);
+  $('quests').innerHTML = s.phase === 'combat' ? '' : s.endless ? renderAbyssPanel(app) : renderQuests(app);
   $('coach').innerHTML = app.ui.modal ? '' : renderCoach(app);
   updateLog();
-  $('bottom').innerHTML = s.phase === 'map' && !app.ui.modal ? renderTravel(app) : '';
+  $('bottom').innerHTML = app.ui.modal ? '' : s.phase === 'map' ? renderTravel(app) : s.phase === 'abyss' ? renderAbyss(app) : '';
   // vista 3D
   if (s.phase === 'combat' && s.combat) {
     useView(battle);
@@ -175,7 +176,7 @@ function render() {
   } else {
     useView(world);
     $('combatui').innerHTML = '';
-    world.sync(s, s.phase === 'map' && !app.ui.modal ? reachable(s) : new Set());
+    world.sync(s, s.phase === 'map' && !app.ui.modal ? reachable(s) : s.phase === 'abyss' && s.endless?.entering == null ? new Set((s.endless?.doors || []).map((d) => d.tile)) : new Set());
     if (s.phase !== 'map') world.setPath(null);
   }
   // pannelli di fase
@@ -231,7 +232,12 @@ function updateLog() {
 // ------------------ interazione mappa ------------------
 world.onTileClick = (t) => {
   const s = app.state;
-  if (!s || s.phase !== 'map' || app.ui.modal) return;
+  if (!s || app.ui.modal) return;
+  if (s.phase === 'abyss') {
+    if (t.poi?.door != null && s.endless?.entering == null) app.send({ type: 'vote', idx: t.poi.door });
+    return;
+  }
+  if (s.phase !== 'map') return;
   const act = s.heroes.find((h) => h.id === s.travel.order?.[s.travel.cur]);
   if (act && !app.canControl(act)) { toast(`È il turno di ${act.name}`, 'info'); return; }
   if (s.travel.stage !== 'move') { if (s.travel.stage === 'roll') toast(`Prima tira il dado di ${act?.name || 'questo eroe'}`, 'info'); return; }
@@ -285,14 +291,18 @@ const A = {
       if (!confirm("C'è una partita in corso: chiuderla? (I progressi non salvati andranno persi.)")) return;
       await app.send({ type: 'to_lobby' });
     }
-    if (d.mode === 'tutorial') {
+    if (d.mode === 'abyss') {
+      if (ph === 'ending' || ph === 'gameover') await app.send({ type: 'to_lobby' });
+      const r = await app.send({ type: 'set_mode', mode: 'local', goal: 'abyss' });
+      if (!r?.ok) return;
+    } else if (d.mode === 'tutorial') {
       app.ui.tutSeen = new Set(); app.ui.tutOpen = null; app.ui.coachMin = false;
       try { sessionStorage.removeItem('vael_tut'); } catch {}
       const r = await app.send({ type: 'start_tutorial' });
       if (!r?.ok) return;
     } else {
       if (ph === 'ending' || ph === 'gameover') await app.send({ type: 'to_lobby' });
-      const r = await app.send({ type: 'set_mode', mode: d.mode });
+      const r = await app.send({ type: 'set_mode', mode: d.mode, goal: 'campaign' });
       if (!r?.ok) return;
     }
     app.ui.screen = null;
@@ -318,6 +328,7 @@ const A = {
   reroll_traits: (d) => app.send({ type: 'reroll_traits', heroId: d.hero }),
   delete_hero: (d) => app.send({ type: 'delete_hero', heroId: d.hero }),
   start: () => app.send({ type: 'start' }),
+  set_goal: (d) => app.send({ type: 'set_goal', goal: d.goal }),
   show_saves: async () => { const r = await net.call('saves'); app.ui.saves = r?.saves || []; render(); },
   load: (d) => { if (confirm('Caricare questa partita? I progressi non salvati andranno persi.')) app.send({ type: 'load', file: d.file }).then((r) => { if (r?.ok) { app.ui.modal = null; app.ui.saves = null; toast('Partita caricata', 'good'); } }); },
   save: () => app.send({ type: 'save', name: app.ui.saveName || app.state.campaignName }).then((r) => r?.ok && toast('Partita salvata', 'good')),

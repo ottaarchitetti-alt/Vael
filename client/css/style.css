@@ -428,8 +428,7 @@ button.linkish:hover:not(:disabled) { background: none; transform: none; color: 
 
 #logpanel:empty { display: none; }
 
-/* =====================================================================
-   TEMA «FERRO E LANTERNE»: cornici di ferro battuto con rivetti d'ottone,
+/* ==============================================================   TEMA «FERRO E LANTERNE»: cornici di ferro battuto con rivetti d'ottone,
    braci che pulsano, vetro e cenere. Sovrascrive gli stili precedenti.
    ===================================================================== */
 :root {
@@ -569,3 +568,21 @@ button.ghost { background: transparent; box-shadow: none; border-color: rgba(168
 #modal { background: radial-gradient(ellipse, rgba(10,6,12,.2), rgba(6,3,8,.78)); }
 /* vignettatura calda attorno allo schermo */
 #ui::before { content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 0; background: radial-gradient(ellipse at 50% 45%, transparent 55%, rgba(4,2,6,.55) 100%); }
+=======
+/* ---------- Abisso Senza Fondo ---------- */
+.travel.abyss .doors { display: flex; gap: 10px; justify-content: center; margin: 10px 0 6px; flex-wrap: wrap; }
+.door { position: relative; width: 190px; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 12px 10px 10px; border: 1px solid var(--line); border-radius: 8px; background: linear-gradient(#2e2632, #1c1820); color: inherit; cursor: pointer; transition: transform .15s, border-color .15s; }
+.door:hover:not(:disabled) { transform: translateY(-3px); border-color: var(--gold2); }
+.door .d-icon { font-size: 26px; line-height: 1; }
+.door .d-kind { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; opacity: .7; }
+.door small { opacity: .8; font-size: 12px; }
+.door.voted, .door.chosen { border-color: var(--gold2); background: linear-gradient(#4a3a28, #2e2418); }
+.door.elite { --dc: #ff7a8a; } .door.boss { --dc: #ff3050; } .door.shop { --dc: #ffd27a; } .door.trial { --dc: #e8e0c8; } .door.rest { --dc: #ff9a3a; } .door.fight { --dc: #c8b8c8; }
+.door .d-kind { color: var(--dc); }
+.door.boss { width: 280px; box-shadow: 0 0 24px rgba(255, 48, 80, .25); }
+.goal-pick { display: flex; gap: 6px; justify-content: center; margin-bottom: 8px; }
+#bottom .travel.abyss { left: 14px; top: 70px; bottom: auto; transform: none; min-width: 0; width: 290px; max-height: calc(100vh - 220px); overflow: auto; text-align: left; }
+.travel.abyss .doors { flex-direction: column; align-items: stretch; }
+.travel.abyss .door, .travel.abyss .door.boss { width: auto; display: grid; grid-template-columns: 34px 1fr; column-gap: 8px; align-items: center; text-align: left; padding: 8px 10px; }
+.travel.abyss .door .d-icon { grid-row: span 3; font-size: 24px; }
+@media (max-width: 760px) { #bottom .travel.abyss { width: calc(100vw - 20px); top: auto; bottom: calc(var(--party-h) + 16px); } }
